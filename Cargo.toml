@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+crossterm = "0.25.0"
 git2 = "0.15.0"
 time = "0.1.37"
+tui = "0.19.0"
