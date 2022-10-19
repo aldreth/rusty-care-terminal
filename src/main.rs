@@ -3,6 +3,8 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use git::GitInfo;
+use std::time::Duration;
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -12,53 +14,27 @@ use tui::{
     Frame, Terminal,
 };
 
-struct App<'a> {
+mod git;
+
+struct App {
     state: TableState,
-    items: Vec<Vec<&'a str>>,
+    items: Vec<GitInfo>,
 }
 
-impl<'a> App<'a> {
-    fn new() -> App<'a> {
+impl App {
+    fn new() -> App {
+        let one_day = Duration::from_secs(60 * 60 * 24);
+        let one_week = one_day * 7;
+
         App {
             state: TableState::default(),
-            items: vec![
-                vec![
-                    "58467808fc5",
-                    "LOTUS-2268 Do not add () after AND, OR and NOT in autocomplete",
-                    "84 minutes ago",
-                ],
-                vec![
-                    "58467808fc5",
-                    "LOTUS-2268 Refactor getAnaplanLanguageObject for Hyperblock vs Polaris cores",
-                    "68 minutes ago",
-                ],
-                vec![
-                    "d53434e6200",
-                    "LOTUS-2280 No . after list names in autocompletion (#36674)",
-                    "24 hours ago",
-                ],
-                vec![
-                    "7febc16b4a9",
-                    "LOTUS-2281 Rename modal wrapper (#36620)",
-                    "2 days ago",
-                ],
-                vec!["0f35fd83b58", "LOTUS-2211 Remove unused type", "2 days ago"],
-                vec![
-                    "1c322a45977",
-                    "LOTUS-2210 Use renderWrappedHook in useGlobalNavFader tests",
-                    "52 days ago",
-                ],
-                vec![
-                    "ee1e5fdc922",
-                    "LOTUS-2010 Fade gnav when modal shows",
-                    "7 days ago",
-                ],
-                vec![
-                    "7a71891e734",
-                    "LOTUS-2010 Remove enabled checkbox",
-                    "7 days ago",
-                ],
-            ],
+            // TODO: get from env
+            items: git::get_commits(
+                "/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations",
+                "Edward Andrews-Hodgson",
+                one_week,
+            )
+            .unwrap(),
         }
     }
     pub fn next(&mut self) {
@@ -150,14 +126,15 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .height(1)
         .bottom_margin(1);
     let rows = app.items.iter().map(|item| {
-        let height = item
-            .iter()
-            .map(|content| content.chars().filter(|c| *c == '\n').count())
-            .max()
-            .unwrap_or(0)
-            + 1;
-        let cells = item.iter().map(|c| Cell::from(*c));
-        Row::new(cells).height(height as u16).bottom_margin(1)
+        let height = 1;
+        let GitInfo(p, q, r) = item;
+        let c1 = Cell::from(p.to_string());
+        let c2 = Cell::from(q.to_string());
+        let c3 = Cell::from(r.to_string());
+
+        Row::new(vec![c1, c2, c3])
+            .height(height as u16)
+            .bottom_margin(1)
     });
     let t = Table::new(rows)
         .header(header)

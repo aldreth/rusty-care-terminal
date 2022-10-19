@@ -1,19 +1,15 @@
-#![deny(warnings)]
-
-use git2::Error;
-use git2::{Commit, Repository, Signature, Time};
+use git2::{Error, Oid};
+use git2::{Repository, Signature, Time};
 use std::{
     str,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub fn get_commits() -> Result<(), Error> {
-    let one_day = Duration::from_secs(60 * 60 * 24);
-    let one_week = one_day * 7;
+#[derive(Debug)]
+pub struct GitInfo(pub Oid, pub String, pub String);
 
-    // TODO: get from env
-    let path = "/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations";
-    let author = "Edward Andrews-Hodgson";
+pub fn get_commits(path: &str, author: &str, duration: Duration) -> Result<Vec<GitInfo>, Error> {
+    let mut vec: Vec<GitInfo> = Vec::new();
 
     let repo = Repository::open(path)?;
     let mut revwalk = repo.revwalk()?;
@@ -40,7 +36,7 @@ pub fn get_commits() -> Result<(), Error> {
             return None;
         }
 
-        if !time_within(commit.time(), one_week) {
+        if !time_within(commit.time(), duration) {
             return None;
         }
 
@@ -49,10 +45,16 @@ pub fn get_commits() -> Result<(), Error> {
 
     for commit in revwalk {
         let commit = commit?;
-        print_commit(&commit);
+
+        let info: GitInfo = GitInfo(
+            commit.id(),
+            commit.summary().unwrap_or_default().to_string(),
+            format_time(commit.author().when()),
+        );
+        vec.push(info)
     }
 
-    Ok(())
+    Ok(vec)
 }
 
 fn sig_matches(sig: &Signature, name: &str) -> bool {
@@ -71,45 +73,9 @@ fn time_within(time: Time, duration: Duration) -> bool {
     time.seconds() > then
 }
 
-fn print_commit(commit: &Commit) {
-    println!("commit {}", commit.id());
-
-    if commit.parents().len() > 1 {
-        print!("Merge:");
-        for id in commit.parent_ids() {
-            print!(" {:.8}", id);
-        }
-        println!();
-    }
-
-    let author = commit.author();
-    println!("Author: {}", author);
-    print_time(&author.when(), "Date:   ");
-    println!();
-
-    for line in String::from_utf8_lossy(commit.message_bytes()).lines() {
-        println!("    {}", line);
-    }
-    println!();
-}
-
-fn print_time(time: &Time, prefix: &str) {
-    let (offset, sign) = match time.offset_minutes() {
-        n if n < 0 => (-n, '-'),
-        n => (n, '+'),
-    };
-    let (hours, minutes) = (offset / 60, offset % 60);
-
+fn format_time(time: Time) -> String {
     // TODO: use updated or system version of time here
     let ts = time::Timespec::new(time.seconds() + (time.offset_minutes() as i64) * 60, 0);
     let time = time::at(ts);
-
-    println!(
-        "{}{} {}{:02}{:02}",
-        prefix,
-        time.strftime("%a %b %e %T %Y").unwrap(),
-        sign,
-        hours,
-        minutes
-    );
+    time.strftime("%a %b %e %T %Y").unwrap().to_string()
 }
