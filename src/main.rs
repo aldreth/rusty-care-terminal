@@ -22,25 +22,42 @@ impl<'a> App<'a> {
         App {
             state: TableState::default(),
             items: vec![
-                vec!["Row11", "Row12", "Row13"],
-                vec!["Row21", "Row22", "Row23"],
-                vec!["Row31", "Row32", "Row33"],
-                vec!["Row41", "Row42", "Row43"],
-                vec!["Row51", "Row52", "Row53"],
-                vec!["Row61", "Row62\nTest", "Row63"],
-                vec!["Row71", "Row72", "Row73"],
-                vec!["Row81", "Row82", "Row83"],
-                vec!["Row91", "Row92", "Row93"],
-                vec!["Row101", "Row102", "Row103"],
-                vec!["Row111", "Row112", "Row113"],
-                vec!["Row121", "Row122", "Row123"],
-                vec!["Row131", "Row132", "Row133"],
-                vec!["Row141", "Row142", "Row143"],
-                vec!["Row151", "Row152", "Row153"],
-                vec!["Row161", "Row162", "Row163"],
-                vec!["Row171", "Row172", "Row173"],
-                vec!["Row181", "Row182", "Row183"],
-                vec!["Row191", "Row192", "Row193"],
+                vec![
+                    "58467808fc5",
+                    "LOTUS-2268 Do not add () after AND, OR and NOT in autocomplete",
+                    "84 minutes ago",
+                ],
+                vec![
+                    "58467808fc5",
+                    "LOTUS-2268 Refactor getAnaplanLanguageObject for Hyperblock vs Polaris cores",
+                    "68 minutes ago",
+                ],
+                vec![
+                    "d53434e6200",
+                    "LOTUS-2280 No . after list names in autocompletion (#36674)",
+                    "24 hours ago",
+                ],
+                vec![
+                    "7febc16b4a9",
+                    "LOTUS-2281 Rename modal wrapper (#36620)",
+                    "2 days ago",
+                ],
+                vec!["0f35fd83b58", "LOTUS-2211 Remove unused type", "2 days ago"],
+                vec![
+                    "1c322a45977",
+                    "LOTUS-2210 Use renderWrappedHook in useGlobalNavFader tests",
+                    "52 days ago",
+                ],
+                vec![
+                    "ee1e5fdc922",
+                    "LOTUS-2010 Fade gnav when modal shows",
+                    "7 days ago",
+                ],
+                vec![
+                    "7a71891e734",
+                    "LOTUS-2010 Remove enabled checkbox",
+                    "7 days ago",
+                ],
             ],
         }
     }
@@ -124,9 +141,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
     let normal_style = Style::default().bg(Color::Blue);
-    let header_cells = ["Header1", "Header2", "Header3"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red)));
+    let header_cells =
+        ["/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations"]
+            .iter()
+            .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red)));
     let header = Row::new(header_cells)
         .style(normal_style)
         .height(1)
@@ -143,12 +161,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     });
     let t = Table::new(rows)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("Table"))
+        .block(Block::default().borders(Borders::ALL).title("Today"))
         .highlight_style(selected_style)
-        .highlight_symbol(">> ")
         .widths(&[
-            Constraint::Percentage(50),
-            Constraint::Length(30),
+            Constraint::Length(10),
+            Constraint::Min(80),
             Constraint::Min(10),
         ]);
     f.render_stateful_widget(t, rects[0], &mut app.state);
