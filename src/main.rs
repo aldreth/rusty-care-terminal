@@ -4,7 +4,6 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use git::GitInfo;
-use std::time::Duration;
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -23,16 +22,13 @@ struct App {
 
 impl App {
     fn new() -> App {
-        let one_day = Duration::from_secs(60 * 60 * 24);
-        let one_week = one_day * 7;
-
         App {
             state: TableState::default(),
             // TODO: get from env
             items: git::get_commits(
                 "/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations",
                 "Edward Andrews-Hodgson",
-                one_week,
+                7,
             )
             .unwrap(),
         }

@@ -8,7 +8,8 @@ use std::{
 #[derive(Debug)]
 pub struct GitInfo(pub Oid, pub String, pub String);
 
-pub fn get_commits(path: &str, author: &str, duration: Duration) -> Result<Vec<GitInfo>, Error> {
+pub fn get_commits(path: &str, author: &str, days: u32) -> Result<Vec<GitInfo>, Error> {
+    let one_day = Duration::from_secs(60 * 60 * 24);
     let mut vec: Vec<GitInfo> = Vec::new();
 
     let repo = Repository::open(path)?;
@@ -36,7 +37,7 @@ pub fn get_commits(path: &str, author: &str, duration: Duration) -> Result<Vec<G
             return None;
         }
 
-        if !time_within(commit.time(), duration) {
+        if !time_within(commit.time(), one_day * days) {
             return None;
         }
 
