@@ -1,4 +1,7 @@
-use crate::git::{get_commits, GitInfo};
+use crate::{
+    config::get_author,
+    git::{get_commits, GitInfo},
+};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -26,7 +29,7 @@ impl App {
             // TODO: get from env
             items: get_commits(
                 "/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations",
-                "Edward Andrews-Hodgson",
+                &get_author(),
                 7,
             )
             .unwrap(),
