@@ -1,5 +1,4 @@
-use git2::{Error, Oid};
-use git2::{Repository, Signature, Time};
+use git2::{Error, Oid, Repository, Signature, Time};
 use std::{
     str,
     time::{Duration, SystemTime, UNIX_EPOCH},

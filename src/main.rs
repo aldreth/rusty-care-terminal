@@ -11,7 +11,5 @@ mod ui;
 // }
 
 fn main() {
-    for dir in config::get_directories() {
-        println!("{:?}", dir)
-    }
+    println!("{:?}", config::get_author())
 }

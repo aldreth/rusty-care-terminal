@@ -15,3 +15,9 @@ pub fn get_directories() -> Vec<fs::DirEntry> {
         })
         .collect()
 }
+pub fn get_author() -> String {
+    git2::Config::open_default()
+        .expect("No git config found")
+        .get_string("user.name")
+        .expect("No git user name set")
+}
