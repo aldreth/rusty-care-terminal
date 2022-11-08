@@ -11,5 +11,7 @@ mod ui;
 // }
 
 fn main() {
-    config::get_directories().for_each(|x| println!("{:?}", x))
+    for dir in config::get_directories() {
+        println!("{:?}", dir)
+    }
 }
