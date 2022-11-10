@@ -1,12 +1,42 @@
+use crate::config;
 use git2::{Error, Oid, Repository, Signature, Time};
 use std::{
     str,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+type CommitSummary = String;
+type CommitTime = String;
 #[derive(Debug)]
-pub struct GitInfo(pub Oid, pub String, pub String);
+pub struct GitInfo(pub Oid, pub CommitSummary, pub CommitTime);
 
+#[derive(Debug)]
+pub struct RepoInfo(pub String, pub Vec<GitInfo>);
+
+pub fn get_repo_info(days: u32) -> Vec<RepoInfo> {
+    let author = config::get_author();
+    let directories = config::get_directories();
+
+    let mut vec: Vec<RepoInfo> = Vec::new();
+
+    directories.into_iter().for_each(|dir| {
+        let this_path = dir.path();
+        let str_path = this_path.to_str().expect("This should be a path");
+        let commits = get_commits(str_path, &author, days);
+
+        match commits {
+            Ok(commits) => {
+                if !commits.is_empty() {
+                    vec.push(RepoInfo(str_path.to_string(), commits));
+                }
+            }
+            Err(err) => println!("{:?}", err),
+        }
+    });
+    vec
+}
+
+// TODO: this won't need to be public once get_repo_info is used
 pub fn get_commits(path: &str, author: &str, days: u32) -> Result<Vec<GitInfo>, Error> {
     let one_day = Duration::from_secs(60 * 60 * 24);
     let mut vec: Vec<GitInfo> = Vec::new();
