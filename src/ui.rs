@@ -31,8 +31,7 @@ impl App {
                 "/Users/edward.andrewshodgson/Developer/work/dashboards-and-visualisations",
                 &get_author(),
                 7,
-            )
-            .unwrap(),
+            ),
         }
     }
     pub fn next(&mut self) {

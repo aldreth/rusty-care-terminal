@@ -24,29 +24,24 @@ pub fn get_repo_info(days: u32) -> Vec<RepoInfo> {
         let str_path = this_path.to_str().expect("This should be a path");
         let commits = get_commits(str_path, &author, days);
 
-        match commits {
-            Ok(commits) => {
-                if !commits.is_empty() {
-                    vec.push(RepoInfo(str_path.to_string(), commits));
-                }
-            }
-            Err(err) => println!("{:?}", err),
+        if !commits.is_empty() {
+            vec.push(RepoInfo(str_path.to_string(), commits));
         }
     });
     vec
 }
 
 // TODO: this won't need to be public once get_repo_info is used
-pub fn get_commits(path: &str, author: &str, days: u32) -> Result<Vec<GitInfo>, Error> {
+pub fn get_commits(path: &str, author: &str, days: u32) -> Vec<GitInfo> {
     let one_day = Duration::from_secs(60 * 60 * 24);
     let mut vec: Vec<GitInfo> = Vec::new();
 
-    let repo = Repository::open(path)?;
-    let mut revwalk = repo.revwalk()?;
+    let repo = Repository::open(path).expect("Repository not found");
+    let mut revwalk = repo.revwalk().expect("somethign");
 
     // Prepare the revwalk based on CLI parameters
-    revwalk.set_sorting(git2::Sort::NONE)?;
-    revwalk.push_head()?;
+    revwalk.set_sorting(git2::Sort::NONE).expect("something");
+    revwalk.push_head().expect("something");
 
     // Filter our revwalk based on the CLI parameters
     macro_rules! filter_try {
@@ -74,8 +69,7 @@ pub fn get_commits(path: &str, author: &str, days: u32) -> Result<Vec<GitInfo>, 
     });
 
     for commit in revwalk {
-        let commit = commit?;
-
+        let commit = commit.expect("msg");
         let info: GitInfo = GitInfo(
             commit.id(),
             commit.summary().unwrap_or_default().to_string(),
@@ -84,7 +78,7 @@ pub fn get_commits(path: &str, author: &str, days: u32) -> Result<Vec<GitInfo>, 
         vec.push(info)
     }
 
-    Ok(vec)
+    vec
 }
 
 fn sig_matches(sig: &Signature, name: &str) -> bool {
