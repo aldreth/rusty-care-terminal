@@ -10,7 +10,9 @@ pub fn get_directories() -> Vec<fs::DirEntry> {
             fs::read_dir(dir)
                 .expect("Directory from RCT_REPOS not found")
                 .flatten()
-                .filter(|x| !x.path().is_file())
+                .filter(|x| { 
+                    println!("path {:#?}", x.path());
+                    !x.path().is_file()})
                 .filter(|x| is_git(x.path().join(".git")).is_ok())
         })
         .collect()

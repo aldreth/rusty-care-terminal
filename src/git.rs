@@ -15,7 +15,9 @@ pub struct RepoInfo(pub String, pub Vec<GitInfo>);
 
 pub fn get_repo_info(days: u32) -> Vec<RepoInfo> {
     let author = config::get_author();
+    println!("author {author}");
     let directories = config::get_directories();
+    println!("directories {:#?}", directories);
 
     let mut vec: Vec<RepoInfo> = Vec::new();
 
@@ -40,8 +42,8 @@ pub fn get_commits(path: &str, author: &str, days: u32) -> Vec<GitInfo> {
     let mut revwalk = repo.revwalk().expect("somethign");
 
     // Prepare the revwalk based on CLI parameters
-    revwalk.set_sorting(git2::Sort::NONE).expect("something");
-    revwalk.push_head().expect("something");
+    revwalk.set_sorting(git2::Sort::NONE).expect("sorting went wrong at {path}");
+    // revwalk.push_head().expect("push head went wrong at {path}");
 
     // Filter our revwalk based on the CLI parameters
     macro_rules! filter_try {
