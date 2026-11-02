@@ -2,7 +2,6 @@
 name = "rusty-care-terminal"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.99.1"
 description = "A gentle Rust + ratatui care terminal inspired by tiny-care-terminal, with Mastodon RSS care feeds"
 license = "MIT"
 readme = "README.md"

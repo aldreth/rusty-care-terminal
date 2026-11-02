@@ -13,7 +13,7 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 
 ## Requirements
 
-- Rust 1.99.1+ to build (edition 2024; pinned in `rust-toolchain.toml`)
+- Rust toolchain from `rust-toolchain.toml` (edition 2024)
 - `git` on `PATH` for commit scanning
 
 ## Build & run
