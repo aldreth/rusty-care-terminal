@@ -25,6 +25,18 @@ cargo build --release
 cargo run -- --mock   # offline care text (still uses cache/fixtures)
 ```
 
+Profiles (via [cargo-wizard](https://github.com/kobzol/cargo-wizard)):
+
+- **dev** — `fast-compile` (`debug = 0`) for quicker rebuilds
+- **release** — `fast-runtime` (`lto`, `codegen-units = 1`, `panic = "abort"`) for speed
+- **dist** — inherits release with `lto = "thin"` for CI binary packaging
+
+`target-cpu=native` from the wizard template is **not** committed (it breaks portable release binaries). For a local machine-tuned build:
+
+```bash
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+```
+
 ## Configuration
 
 Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work for original tiny-care names.
@@ -108,6 +120,21 @@ Alternatives: `3goodthings@fedigroups.social` (often empty RSS), `scream@bots.ro
 │ week commits                     │ say-box / pomodoro │
 └───────────────────────────────────────────────────────┘
 ```
+
+## Releases
+
+Automated releases follow Orhun’s [git-cliff + release-plz + dist](https://blog.orhun.dev/automated-rust-releases/) recipe (2023), updated for current tooling (`cargo-dist` → **`dist` 0.34**, `release-plz/action@v0.5`). Mergify is skipped — Dependabot PRs are reviewed manually.
+
+See [RELEASES.md](./RELEASES.md) for the flow and required GitHub secrets.
+
+Install from a GitHub Release (after the first tagged release):
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/aldreth/rusty-care-terminal/releases/latest/download/rusty-care-terminal-installer.sh | sh
+```
+
+Or from crates.io once published: `cargo install rusty-care-terminal --locked`
 
 ## License
 

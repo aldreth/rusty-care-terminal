@@ -1,0 +1,16 @@
+# Dependabot keeps Cargo + Actions deps current.
+# Skipping Mergify from Orhun's 2023 blog — merge Dependabot PRs manually
+# (or enable GitHub's native auto-merge / a later bot if desired).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
