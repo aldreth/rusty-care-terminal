@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{BarChart, Block, Borders, Paragraph, Wrap};
-use ratatui::Frame;
 
 use crate::app::{App, PomodoroPhase};
 use crate::ui::art;
@@ -74,10 +74,16 @@ fn draw_today(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         "tiny commit bot is looking for tiny commits!"
     };
+    let title = if app.scroll_today_focus {
+        "📝 last 24 hours · j/k"
+    } else {
+        "📝 last 24 hours"
+    };
     let lines = commit_lines(&app.commits.today, empty);
     let widget = Paragraph::new(lines)
-        .block(border_block("📝 last 24 hours"))
-        .wrap(Wrap { trim: true });
+        .block(border_block(title))
+        .wrap(Wrap { trim: true })
+        .scroll((app.scroll_today, 0));
     frame.render_widget(widget, area);
 }
 
@@ -87,10 +93,16 @@ fn draw_week(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         "no commits this week yet — soft start is fine"
     };
+    let title = if !app.scroll_today_focus {
+        "📝 last week · j/k"
+    } else {
+        "📝 last week"
+    };
     let lines = commit_lines(&app.commits.week, empty);
     let widget = Paragraph::new(lines)
-        .block(border_block("📝 last week"))
-        .wrap(Wrap { trim: true });
+        .block(border_block(title))
+        .wrap(Wrap { trim: true })
+        .scroll((app.scroll_week, 0));
     frame.render_widget(widget, area);
 }
 
@@ -162,10 +174,7 @@ fn draw_weather(frame: &mut Frame, app: &App, area: Rect) {
         ]
     } else {
         vec![
-            Line::from(Span::styled(
-                "somewhere cozy",
-                Style::default().fg(ACCENT),
-            )),
+            Line::from(Span::styled("somewhere cozy", Style::default().fg(ACCENT))),
             Line::from(""),
             Line::from("Set RCT_WEATHER or --weather"),
             Line::from("(city name or lat,lon)"),
@@ -182,15 +191,10 @@ fn draw_weather(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_care_panel(frame: &mut Frame, app: &App, index: usize, title: &str, area: Rect) {
     let (label, body) = match app.care.get(index) {
-        Some(msg) if app.loading && msg.text.is_empty() => {
-            ("…".into(), "loading care…".into())
-        }
+        Some(msg) if app.loading && msg.text.is_empty() => ("…".into(), "loading care…".into()),
         Some(msg) => {
             let tag = if msg.from_mock { "mock" } else { "live" };
-            (
-                format!("{} · {tag}", msg.source_label),
-                msg.text.clone(),
-            )
+            (format!("{} · {tag}", msg.source_label), msg.text.clone())
         }
         None if app.loading => ("…".into(), "loading care…".into()),
         None => ("—".into(), "Hi! You're doing great!!!".into()),
@@ -263,10 +267,7 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(format!(
-            "work {}m · break {}m",
-            p.work_mins, p.break_mins
-        )),
+        Line::from(format!("work {}m · break {}m", p.work_mins, p.break_mins)),
         Line::from(""),
         Line::from(Span::styled(
             "s start/pause · e reset · u/U work± · b/B break± · p exit",

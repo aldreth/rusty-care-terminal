@@ -7,10 +7,9 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 ## Features
 
 - Today / last-week git commit panels + bar chart (commits where **you** are sole or joint author)
-- Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`)
+- Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`), with REST fallback + disk cache
 - Weather via Open-Meteo (`RCT_WEATHER` city or `lat,lon`)
 - Pomodoro mode in the say-box (`p` / `s` / `e` / `u` / `b`)
-- Keys: `q` / `Esc` quit, `r` refresh, `p` pomodoro
 
 ## Requirements
 
@@ -21,25 +20,23 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 
 ```bash
 cargo build --release
-./target/release/rusty-care-terminal
+./target/release/rusty-care-terminal --repos "$HOME/Code" --weather "London"
 
-# or while developing
-cargo run -- --repos "$HOME/Code" --repos-depth 2
-cargo run -- --mock   # offline care text
+cargo run -- --mock   # offline care text (still uses cache/fixtures)
 ```
 
 ## Configuration
 
-Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work for the original tiny-care names.
+Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work for original tiny-care names.
 
 | Env | CLI | Purpose |
 | --- | --- | --- |
 | `RCT_REPOS` | `--repos` | Comma-separated repo roots (`~/` ok) |
-| `RCT_REPOS_DEPTH` | `--repos-depth` | Nested walk depth (default 1) |
-| `RCT_GIT_AUTHOR` | `--git-author` | Your name/email(s) for authorship filter; default = repo `user.email` / `user.name` |
+| `RCT_REPOS_DEPTH` | `--repos-depth` | Nested walk depth 1–5 (default 1) |
+| `RCT_GIT_AUTHOR` | `--git-author` | Name/email(s) for sole/joint authorship filter |
 | `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
 | `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
-| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` |
+| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` \| `RANDOM` \| art file path |
 | `RCT_UPDATE_INTERVAL` | `--update-interval` | Minutes (default 20) |
 | `RCT_MOCK` | `--mock` | Skip live RSS; use bundled kindness text |
 | `RCT_WEATHER` | `--weather` | City name or `lat,lon` (Open-Meteo) |
@@ -51,13 +48,55 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 ```bash
 export RCT_REPOS="$HOME/Developer/play,$HOME/Code"
 export RCT_REPOS_DEPTH=2
+export RCT_WEATHER=London
 export RCT_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,GoatsLive@mastodon.social'
 rusty-care-terminal
 ```
 
-Without `RCT_REPOS` / `--repos`, commit panels stay empty with a friendly placeholder.
+Git panels include a commit if you are the **author**, the **committer**, or listed in a **`Co-authored-by`** trailer.
 
-Git panels include a commit if you are the **author**, the **committer**, or listed in a **`Co-authored-by`** trailer (so Cursor/agent joint commits count). Unrelated authors in the same folder tree are skipped. Set `RCT_GIT_AUTHOR` if your identity isn’t in the repo’s git config.
+### Offline / cache
+
+- `--mock` / `RCT_MOCK=true`: bundled kindness strings, no network for care.
+- On feed errors or HTTP 429: last good tip from `~/.cache/rusty-care-terminal/care/` (or `$XDG_CACHE_HOME/...`), then static fallback.
+- Rate-limit backoff persists briefly across refreshes.
+
+## Keys
+
+| Key | Action |
+| --- | --- |
+| `q` / `Esc` | Quit |
+| `r` | Refresh git / RSS / weather |
+| `Tab` | Focus today vs week list for scrolling |
+| `j` / `k` or arrows | Scroll focused commit list |
+| `p` | Toggle pomodoro in the say-box |
+| `s` | Start / pause pomodoro |
+| `e` | Reset current phase |
+| `u` / `U` | Work minutes +1 / −1 |
+| `b` / `B` | Break minutes +1 / −1 |
+
+Desktop notifications stay off (quiet for headless/remote use).
+
+## Default care accounts
+
+| Account | Role |
+| --- | --- |
+| `selfcare@hachyderm.io` | Say-box — selfcare.tech tips |
+| `selfcaregentle@hachyderm.io` | Care panel — gentler cadence |
+| `GoatsLive@mastodon.social` | Care panel — wholesome goats |
+
+Alternatives: `3goodthings@fedigroups.social` (often empty RSS), `scream@bots.robots.rodeo`, `meditation@fedigroups.social`.
+
+## Compared to tiny-care-terminal
+
+| | tiny-care-terminal | rusty-care-terminal |
+| --- | --- | --- |
+| Language / UI | Node + blessed | Rust + ratatui |
+| Care source | Twitter bots | Mastodon RSS (+ REST fallback) |
+| Config | `TTC_*` env | `RCT_*` env + CLI (no file) |
+| Weather | MSN / weather-js | Open-Meteo |
+| Pomodoro | Yes | Yes (no desktop notify by default) |
+| Git | Your commits | Sole or joint authorship (incl. Co-authored-by) |
 
 ## Layout
 
@@ -70,20 +109,6 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 └───────────────────────────────────────────────────────┘
 ```
 
-## Keys
+## License
 
-| Key | Action |
-| --- | --- |
-| `q` / `Esc` | Quit |
-| `r` | Refresh git / RSS / weather |
-| `p` | Toggle pomodoro in the say-box |
-| `s` | Start / pause pomodoro |
-| `e` | Reset current phase |
-| `u` / `U` | Work minutes +1 / −1 |
-| `b` / `B` | Break minutes +1 / −1 |
-
-Desktop notifications are intentionally off (quiet by default for headless/remote use).
-
-## Credit
-
-Inspired by Monica Dinculescu’s [tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal) and the selfcare.tech community.
+MIT. Inspired by Monica Dinculescu’s [tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal) and the selfcare.tech community.

@@ -48,8 +48,8 @@ pub fn collect_commits(
         }
     }
 
-    stats.today.sort_by(|a, b| b.when.cmp(&a.when));
-    stats.week.sort_by(|a, b| b.when.cmp(&a.when));
+    stats.today.sort_by_key(|c| std::cmp::Reverse(c.when));
+    stats.week.sort_by_key(|c| std::cmp::Reverse(c.when));
     (stats, warnings)
 }
 
@@ -99,13 +99,12 @@ fn identities_for_repo(repo: &Path, override_author: Option<&str>) -> Vec<String
 
     let mut ids = Vec::new();
     for key in ["user.email", "user.name"] {
-        if let Some(v) = git_config(repo, key) {
-            if !ids
+        if let Some(v) = git_config(repo, key)
+            && !ids
                 .iter()
                 .any(|existing: &String| existing.eq_ignore_ascii_case(&v))
-            {
-                ids.push(v);
-            }
+        {
+            ids.push(v);
         }
     }
     ids
@@ -128,11 +127,7 @@ fn git_config(repo: &Path, key: &str) -> Option<String> {
         return None;
     }
     let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<CommitEntry>> {
@@ -236,7 +231,9 @@ fn involves_you(
 }
 
 fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
-    haystack.to_ascii_lowercase().contains(&needle.to_ascii_lowercase())
+    haystack
+        .to_ascii_lowercase()
+        .contains(&needle.to_ascii_lowercase())
 }
 
 fn parse_git_date(raw: &str) -> Option<DateTime<Local>> {

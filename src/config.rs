@@ -60,7 +60,7 @@ impl Config {
             cfg.repos = expand_repos(&split_csv(&repos));
         }
         if let Some(depth) = cli.repos_depth {
-            cfg.repos_depth = depth;
+            cfg.repos_depth = depth.clamp(1, 5);
         }
         if let Some(bots) = cli.bots {
             cfg.bots = split_csv(&bots)
@@ -150,8 +150,9 @@ fn merge_env(cfg: &mut Config) -> Result<()> {
     }
     if let Some(v) = env_first(&["RCT_REPOS_DEPTH", "TTC_REPOS_DEPTH"]) {
         cfg.repos_depth = v
-            .parse()
-            .map_err(|_| CareError::Config(format!("invalid repos_depth: {v}")))?;
+            .parse::<usize>()
+            .map_err(|_| CareError::Config(format!("invalid repos_depth: {v}")))?
+            .clamp(1, 5);
     }
     if let Some(v) = env_first(&["RCT_GIT_AUTHOR", "TTC_GIT_AUTHOR"]) {
         cfg.git_author = Some(v);

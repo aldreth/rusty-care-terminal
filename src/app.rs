@@ -91,6 +91,10 @@ pub struct App {
     pub error: Option<String>,
     pub warnings: Vec<String>,
     pub pomodoro: PomodoroState,
+    pub scroll_today: u16,
+    pub scroll_week: u16,
+    /// Which commit list receives j/k scrolling: true = today, false = week.
+    pub scroll_today_focus: bool,
 }
 
 impl App {
@@ -108,6 +112,9 @@ impl App {
             error: None,
             warnings: Vec::new(),
             pomodoro,
+            scroll_today: 0,
+            scroll_week: 0,
+            scroll_today_focus: true,
         };
         app.refresh();
         app
@@ -198,6 +205,23 @@ impl App {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return AppAction::Quit,
                 KeyCode::Char('r') => self.refresh(),
+                KeyCode::Tab => {
+                    self.scroll_today_focus = !self.scroll_today_focus;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if self.scroll_today_focus {
+                        self.scroll_today = self.scroll_today.saturating_add(1);
+                    } else {
+                        self.scroll_week = self.scroll_week.saturating_add(1);
+                    }
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    if self.scroll_today_focus {
+                        self.scroll_today = self.scroll_today.saturating_sub(1);
+                    } else {
+                        self.scroll_week = self.scroll_week.saturating_sub(1);
+                    }
+                }
                 KeyCode::Char('p') => {
                     self.pomodoro.active = !self.pomodoro.active;
                     if self.pomodoro.active {
@@ -217,13 +241,15 @@ impl App {
                 }
                 KeyCode::Char('u') if self.pomodoro.active => {
                     self.pomodoro.work_mins = self.pomodoro.work_mins.saturating_add(1).min(120);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running {
+                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running
+                    {
                         self.pomodoro.reset_phase();
                     }
                 }
                 KeyCode::Char('U') if self.pomodoro.active => {
                     self.pomodoro.work_mins = self.pomodoro.work_mins.saturating_sub(1).max(1);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running {
+                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running
+                    {
                         self.pomodoro.reset_phase();
                     }
                 }
