@@ -694,6 +694,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "rusty-care-terminal"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "crossterm",
+ "dirs 5.0.1",
+ "ratatui",
+ "serde",
+ "shellexpand",
+ "thiserror 2.0.21",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -905,23 +922,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "tiny-care-terminal"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "crossterm",
- "dirs 5.0.1",
- "ratatui",
- "serde",
- "shellexpand",
- "thiserror 2.0.21",
- "toml",
- "walkdir",
 ]
 
 [[package]]

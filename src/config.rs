@@ -120,7 +120,7 @@ fn discover_config_path() -> Option<PathBuf> {
     if sample.is_file() {
         // Prefer example only as discovery hint — do not auto-load sample as live config.
     }
-    dirs::config_dir().map(|d| d.join("tiny-care-terminal").join("config.toml"))
+    dirs::config_dir().map(|d| d.join("rusty-care-terminal").join("config.toml"))
 }
 
 fn load_file(path: &Path) -> Result<FileConfig> {

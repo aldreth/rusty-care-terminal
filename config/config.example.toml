@@ -1,4 +1,4 @@
-# Copy to ./config.toml or ~/.config/tiny-care-terminal/config.toml
+# Copy to ./config.toml or ~/.config/rusty-care-terminal/config.toml
 # Env overrides (CARE_* or legacy TTC_*) win over this file.
 
 # Care sources: @user@instance resolves to https://{host}/@{user}.rss (Milestone 2).

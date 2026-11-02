@@ -24,7 +24,7 @@ use config::Config;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "tiny-care-terminal",
+    name = "rusty-care-terminal",
     about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter)."
 )]
 struct Cli {

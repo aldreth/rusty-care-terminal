@@ -1,4 +1,4 @@
-# tiny-care-terminal (Rust)
+# rusty-care-terminal
 
 A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal), rebuilt in **Rust** with **ratatui**. Care messages are designed for **Mastodon RSS** (no Twitter).
 
@@ -49,7 +49,7 @@ cargo run
 
 ### TOML
 
-Copy [`config/config.example.toml`](config/config.example.toml) to `./config.toml` or `~/.config/tiny-care-terminal/config.toml`.
+Copy [`config/config.example.toml`](config/config.example.toml) to `./config.toml` or `~/.config/rusty-care-terminal/config.toml`.
 
 ```toml
 repos = ["~/Code"]
