@@ -8,6 +8,9 @@ pub enum CareError {
     #[error("git error in {path}: {message}")]
     Git { path: String, message: String },
 
+    #[error("care feed error: {0}")]
+    Feed(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

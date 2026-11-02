@@ -4,7 +4,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
 use crate::config::Config;
 use crate::model::{CareMessage, CommitStats};
-use crate::services::{git, mock};
+use crate::services::{git, mastodon};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
@@ -51,8 +51,7 @@ impl App {
             }
         }
 
-        // MVP: always use mock care text; types already encode RSS intent.
-        self.care = mock::mock_care_messages(&self.config);
+        self.care = mastodon::fetch_care_messages(&self.config);
 
         let repo_note = if self.config.repos.is_empty() {
             "no repos configured (set RCT_REPOS or config.toml)"
@@ -60,8 +59,17 @@ impl App {
             "git scanned"
         };
 
+        let live = self.care.iter().filter(|m| !m.from_mock).count();
+        let care_note = if self.config.mock {
+            "care mock"
+        } else if live == 0 {
+            "care offline"
+        } else {
+            "care rss"
+        };
+
         self.status = format!(
-            "{repo_note} · today {} · week {} · care mock · q quit · r refresh",
+            "{repo_note} · today {} · week {} · {care_note} · q quit · r refresh",
             self.commits.today_count(),
             self.commits.week_count()
         );

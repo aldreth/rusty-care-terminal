@@ -31,5 +31,5 @@ terminal_title = "tiny care"
 pomodoro = 25
 break_minutes = 5
 
-# MVP care panels use mock text; live RSS arrives in Milestone 2
-mock = true
+# Use mock care text instead of live Mastodon RSS
+mock = false

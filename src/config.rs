@@ -60,7 +60,7 @@ impl Default for Config {
             terminal_title: "tiny care".into(),
             pomodoro: 25,
             break_minutes: 5,
-            mock: true, // MVP: care panels are mock until RSS lands
+            mock: false, // live Mastodon RSS by default; --mock / RCT_MOCK for offline
             config_path: None,
         }
     }

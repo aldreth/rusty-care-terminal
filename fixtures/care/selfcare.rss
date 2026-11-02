@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>selfcare.tech</title>
+    <description>Public posts from @selfcare@hachyderm.io</description>
+    <link>https://hachyderm.io/@selfcare</link>
+    <item>
+      <guid isPermaLink="true">https://hachyderm.io/@selfcare/fixture-1</guid>
+      <link>https://hachyderm.io/@selfcare/fixture-1</link>
+      <pubDate>Mon, 02 Nov 2026 18:35:33 +0000</pubDate>
+      <description>&lt;p&gt;It&amp;#39;s okay to use a timer to remind yourself to take breaks.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

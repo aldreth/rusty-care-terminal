@@ -5,7 +5,7 @@ A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://
 This MVP shows:
 
 - Today / last-week git commit panels + bar chart (real `git log` scan)
-- Care / say panels with **mock** kindness text (RSS wiring comes next)
+- Care / say panels fed from **Mastodon RSS** (`@user@instance` → `https://{host}/@{user}.rss`)
 - Weather stub
 - Keys: `q` / `Esc` quit, `r` refresh
 
@@ -23,9 +23,10 @@ cargo run
 # with an explicit config
 cargo run -- --config ./config.toml
 
-# force mock care (also the MVP default)
+# offline care fixtures (no network)
 cargo run -- --mock
 ```
+
 
 ## Configure repos
 

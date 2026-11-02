@@ -32,7 +32,7 @@ struct Cli {
     #[arg(long, env = "RCT_CONFIG")]
     config: Option<PathBuf>,
 
-    /// Force mock care messages (default for MVP).
+    /// Force mock care messages (skip live Mastodon RSS).
     #[arg(long, env = "RCT_MOCK", default_value_t = false)]
     mock: bool,
 }
