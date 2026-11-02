@@ -6,7 +6,7 @@
 bots = [
   "selfcare@hachyderm.io",
   "selfcaregentle@hachyderm.io",
-  "3goodthings@fedigroups.social",
+  "GoatsLive@mastodon.social",
 ]
 
 # Optional explicit RSS feeds (same panel order). When set, these are preferred.
@@ -19,6 +19,8 @@ say_box = "parrot" # parrot | bunny | llama | cat
 # Git roots to scan (absolute or ~/ paths). Depth walks nested repos.
 repos = ["~/Code"]
 repos_depth = 2
+# Optional: override git author filter (default = each repo's user.email / user.name)
+# git_author = "you@example.com"
 
 # Weather placeholder until Milestone 3
 # weather = "Paris"

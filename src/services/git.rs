@@ -7,28 +7,41 @@ use walkdir::WalkDir;
 use crate::error::{CareError, Result};
 use crate::model::{CommitEntry, CommitStats};
 
-/// Discover git repos under configured roots (depth-limited) and collect commits.
-pub fn collect_commits(roots: &[PathBuf], depth: usize) -> Result<CommitStats> {
+/// Discover git repos under configured roots (depth-limited) and collect commits
+/// authored by the local git identity (matches original tiny-care-terminal).
+pub fn collect_commits(
+    roots: &[PathBuf],
+    depth: usize,
+    author_override: Option<&str>,
+) -> (CommitStats, Vec<String>) {
     let repos = discover_repos(roots, depth);
     let mut stats = CommitStats::default();
+    let mut warnings = Vec::new();
 
-    for repo in repos {
-        match log_commits(&repo, "1 day ago") {
+    for repo in &repos {
+        let authors = author_filters(repo, author_override);
+        match log_commits(repo, "1 day ago", &authors) {
             Ok(mut entries) => stats.today.append(&mut entries),
-            Err(e) => {
-                // Soft-fail per repo so one bad path does not kill the dashboard.
-                eprintln!("warning: {e}");
-            }
+            Err(e) => warnings.push(e.to_string()),
         }
-        match log_commits(&repo, "7 days ago") {
+        match log_commits(repo, "7 days ago", &authors) {
             Ok(mut entries) => stats.week.append(&mut entries),
-            Err(e) => eprintln!("warning: {e}"),
+            Err(e) => warnings.push(e.to_string()),
+        }
+    }
+
+    if roots.iter().any(|r| !r.exists()) {
+        for root in roots {
+            if !root.exists() {
+                warnings.push(format!("repo path missing: {}", root.display()));
+            }
         }
     }
 
     stats.today.sort_by(|a, b| b.when.cmp(&a.when));
     stats.week.sort_by(|a, b| b.when.cmp(&a.when));
-    Ok(stats)
+    // Deduplicate week vs today overlap is fine visually; keep as-is.
+    (stats, warnings)
 }
 
 pub fn discover_repos(roots: &[PathBuf], depth: usize) -> Vec<PathBuf> {
@@ -36,13 +49,11 @@ pub fn discover_repos(roots: &[PathBuf], depth: usize) -> Vec<PathBuf> {
 
     for root in roots {
         if !root.exists() {
-            eprintln!("warning: repo path missing: {}", root.display());
             continue;
         }
 
         if is_git_repo(root) {
             found.push(root.clone());
-            // Still walk for nested repos when depth > 1.
         }
 
         let max_depth = depth.max(1);
@@ -72,17 +83,63 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn log_commits(repo: &Path, since: &str) -> Result<Vec<CommitEntry>> {
+fn author_filters(repo: &Path, override_author: Option<&str>) -> Vec<String> {
+    if let Some(raw) = override_author {
+        return split_authors(raw);
+    }
+
+    let mut filters = Vec::new();
+    for key in ["user.email", "user.name"] {
+        if let Some(v) = git_config(repo, key) {
+            if !filters.iter().any(|f| f == &v) {
+                filters.push(v);
+            }
+        }
+    }
+    filters
+}
+
+fn split_authors(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn git_config(repo: &Path, key: &str) -> Option<String> {
     let output = Command::new("git")
-        .args([
-            "-C",
-            repo.to_str().unwrap_or("."),
-            "log",
-            "--all",
-            &format!("--since={since}"),
-            "--date=iso-strict",
-            "--pretty=format:%h%x09%ad%x09%an%x09%s",
-        ])
+        .args(["-C", repo.to_str().unwrap_or("."), "config", "--get", key])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn log_commits(repo: &Path, since: &str, authors: &[String]) -> Result<Vec<CommitEntry>> {
+    let mut args = vec![
+        "-C".to_string(),
+        repo.to_str().unwrap_or(".").to_string(),
+        "log".into(),
+        "--all".into(),
+        format!("--since={since}"),
+        "--date=iso-strict".into(),
+        "--pretty=format:%h%x09%ad%x09%an%x09%s".into(),
+    ];
+    // Match original care terminal: only show commits by you.
+    for author in authors {
+        args.push(format!("--author={author}"));
+    }
+
+    let output = Command::new("git")
+        .args(&args)
         .output()
         .map_err(|e| CareError::Git {
             path: repo.display().to_string(),

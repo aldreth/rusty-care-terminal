@@ -11,22 +11,25 @@ use crate::services::mock;
 const USER_AGENT: &str = concat!("rusty-care-terminal/", env!("CARGO_PKG_VERSION"));
 
 /// Fetch latest care messages via Mastodon RSS (or mock / static fallback).
-pub fn fetch_care_messages(cfg: &Config) -> Vec<CareMessage> {
+/// Returns `(messages, warnings)` — never prints to stderr (keeps the TUI clean).
+pub fn fetch_care_messages(cfg: &Config) -> (Vec<CareMessage>, Vec<String>) {
     if cfg.mock {
-        return mock::mock_care_messages(cfg);
+        return (mock::mock_care_messages(cfg), Vec::new());
     }
 
     let sources = cfg.care_sources();
     let mut out = Vec::with_capacity(3);
+    let mut warnings = Vec::new();
 
     for i in 0..3 {
-        let source = sources.get(i).cloned().unwrap_or_else(|| {
-            CareSource::Acct(format!("care-{}", i + 1))
-        });
+        let source = sources
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| CareSource::Acct(format!("care-{}", i + 1)));
         match fetch_one(&source) {
             Ok(msg) => out.push(msg),
             Err(e) => {
-                eprintln!("warning: care feed {}: {e}", source.label());
+                warnings.push(format!("care feed {}: {e}", source.label()));
                 // Keep a soft fallback so panels never go blank.
                 let fallback = mock::mock_care_messages(cfg);
                 let idx = i.min(fallback.len().saturating_sub(1));
@@ -49,7 +52,7 @@ pub fn fetch_care_messages(cfg: &Config) -> Vec<CareMessage> {
         }
     }
 
-    out
+    (out, warnings)
 }
 
 fn fetch_one(source: &CareSource) -> Result<CareMessage> {

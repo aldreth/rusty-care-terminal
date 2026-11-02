@@ -173,7 +173,9 @@ fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
         })
         .unwrap_or_else(|| "care".into());
 
-    let art_text = art::say_box(&app.config.say_box, msg);
+    // Inner width inside borders; bubble wraps to this instead of hard-truncating.
+    let max_width = area.width.saturating_sub(2) as usize;
+    let art_text = art::say_box(&app.config.say_box, msg, max_width);
     let mut lines: Vec<Line<'static>> = vec![
         Line::from(Span::styled(source, Style::default().fg(Color::Yellow))),
         Line::from(""),
@@ -192,8 +194,12 @@ fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let mut text = app.status.clone();
+    // Surface a short first warning in the status line (never eprintln into the TUI).
     if let Some(err) = &app.error {
-        text = format!("error: {err} · {text}");
+        let short = truncate(err, 48);
+        if !text.contains(&short) {
+            text = format!("{text} · {short}");
+        }
     }
     if app.loading {
         text = format!("loading… · {text}");

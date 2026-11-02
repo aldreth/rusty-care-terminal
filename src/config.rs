@@ -10,7 +10,8 @@ use crate::model::CareSource;
 const DEFAULT_BOTS: &[&str] = &[
     "selfcare@hachyderm.io",
     "selfcaregentle@hachyderm.io",
-    "3goodthings@fedigroups.social",
+    // GoatsLive has a lively public RSS; 3goodthings group feed is often empty.
+    "GoatsLive@mastodon.social",
 ];
 
 #[derive(Debug, Clone)]
@@ -20,6 +21,8 @@ pub struct Config {
     pub say_box: String,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
+    /// Optional override for `git log --author` (comma-separated). Default: repo user.email/name.
+    pub git_author: Option<String>,
     pub weather: Option<String>,
     pub celsius: bool,
     pub update_interval_mins: u64,
@@ -37,6 +40,7 @@ struct FileConfig {
     say_box: Option<String>,
     repos: Option<Vec<String>>,
     repos_depth: Option<usize>,
+    git_author: Option<String>,
     weather: Option<String>,
     celsius: Option<bool>,
     update_interval: Option<u64>,
@@ -54,6 +58,7 @@ impl Default for Config {
             say_box: "parrot".into(),
             repos: Vec::new(),
             repos_depth: 1,
+            git_author: None,
             weather: None,
             celsius: true,
             update_interval_mins: 20,
@@ -148,6 +153,9 @@ fn merge_file(cfg: &mut Config, file: FileConfig) {
     if let Some(v) = file.repos_depth {
         cfg.repos_depth = v;
     }
+    if let Some(v) = file.git_author {
+        cfg.git_author = Some(v);
+    }
     if let Some(v) = file.weather {
         cfg.weather = Some(v);
     }
@@ -189,6 +197,9 @@ fn merge_env(cfg: &mut Config) -> Result<()> {
         cfg.repos_depth = v
             .parse()
             .map_err(|_| CareError::Config(format!("invalid repos_depth: {v}")))?;
+    }
+    if let Some(v) = env_first(&["RCT_GIT_AUTHOR", "TTC_GIT_AUTHOR"]) {
+        cfg.git_author = Some(v);
     }
     if let Some(v) = env_first(&["RCT_WEATHER", "TTC_WEATHER"]) {
         cfg.weather = Some(v);

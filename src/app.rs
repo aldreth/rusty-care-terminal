@@ -20,6 +20,7 @@ pub struct App {
     pub last_refresh: Instant,
     pub loading: bool,
     pub error: Option<String>,
+    pub warnings: Vec<String>,
 }
 
 impl App {
@@ -32,6 +33,7 @@ impl App {
             last_refresh: Instant::now(),
             loading: true,
             error: None,
+            warnings: Vec::new(),
         };
         app.refresh();
         app
@@ -40,18 +42,19 @@ impl App {
     pub fn refresh(&mut self) {
         self.loading = true;
         self.status = "refreshing…".into();
+        self.warnings.clear();
 
-        match git::collect_commits(&self.config.repos, self.config.repos_depth) {
-            Ok(stats) => {
-                self.commits = stats;
-                self.error = None;
-            }
-            Err(e) => {
-                self.error = Some(e.to_string());
-            }
-        }
+        let (stats, git_warnings) = git::collect_commits(
+            &self.config.repos,
+            self.config.repos_depth,
+            self.config.git_author.as_deref(),
+        );
+        self.commits = stats;
+        self.warnings.extend(git_warnings);
 
-        self.care = mastodon::fetch_care_messages(&self.config);
+        let (care, care_warnings) = mastodon::fetch_care_messages(&self.config);
+        self.care = care;
+        self.warnings.extend(care_warnings);
 
         let repo_note = if self.config.repos.is_empty() {
             "no repos configured (set RCT_REPOS or config.toml)"
@@ -68,11 +71,18 @@ impl App {
             "care rss"
         };
 
+        let warn_note = if self.warnings.is_empty() {
+            String::new()
+        } else {
+            format!(" · {} warn", self.warnings.len())
+        };
+
         self.status = format!(
-            "{repo_note} · today {} · week {} · {care_note} · q quit · r refresh",
+            "{repo_note} · today {} · week {} · {care_note}{warn_note} · q quit · r refresh",
             self.commits.today_count(),
             self.commits.week_count()
         );
+        self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.loading = false;
     }

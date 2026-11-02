@@ -38,9 +38,11 @@ Repo paths come from TOML and/or env. Env wins for the same key.
 export RCT_REPOS="$HOME/Code,$HOME/src/project"
 export RCT_REPOS_DEPTH=2
 export RCT_UPDATE_INTERVAL=20
+# Only show commits by you (default: each repo's user.email / user.name)
+# export RCT_GIT_AUTHOR='you@example.com'
 
-# Care sources → intended RSS: https://{host}/@{user}.rss
-export RCT_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,3goodthings@fedigroups.social'
+# Care sources → https://{host}/@{user}.rss
+export RCT_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,GoatsLive@mastodon.social'
 # Or explicit feeds:
 # export RCT_BOT_FEEDS='https://hachyderm.io/@selfcare.rss,...'
 
