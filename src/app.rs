@@ -169,8 +169,13 @@ impl App {
         };
 
         let updated = Local::now().format("%H:%M").to_string();
+        let pomo_hint = if self.pomodoro.active {
+            format!(" · pomo {}", self.pomodoro.mmss())
+        } else {
+            String::new()
+        };
         self.status = format!(
-            "{repo_note} · today {} · week {} · {care_note}{weather_note}{warn_note} · upd {updated} · q quit · r refresh · p pomo",
+            "{repo_note} · today {} · week {} · {care_note}{weather_note}{warn_note}{pomo_hint} · upd {updated} · q/r/p",
             self.commits.today_count(),
             self.commits.week_count()
         );
@@ -216,8 +221,21 @@ impl App {
                         self.pomodoro.reset_phase();
                     }
                 }
+                KeyCode::Char('U') if self.pomodoro.active => {
+                    self.pomodoro.work_mins = self.pomodoro.work_mins.saturating_sub(1).max(1);
+                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running {
+                        self.pomodoro.reset_phase();
+                    }
+                }
                 KeyCode::Char('b') if self.pomodoro.active => {
                     self.pomodoro.break_mins = self.pomodoro.break_mins.saturating_add(1).min(60);
+                    if matches!(self.pomodoro.phase, PomodoroPhase::Break) && !self.pomodoro.running
+                    {
+                        self.pomodoro.reset_phase();
+                    }
+                }
+                KeyCode::Char('B') if self.pomodoro.active => {
+                    self.pomodoro.break_mins = self.pomodoro.break_mins.saturating_sub(1).max(1);
                     if matches!(self.pomodoro.phase, PomodoroPhase::Break) && !self.pomodoro.running
                     {
                         self.pomodoro.reset_phase();

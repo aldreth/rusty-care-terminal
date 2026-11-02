@@ -269,7 +269,7 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, area: Rect) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "s start/pause · e reset · u +work · b +break · p exit",
+            "s start/pause · e reset · u/U work± · b/B break± · p exit",
             Style::default().fg(MUTED),
         )),
     ];
@@ -281,6 +281,10 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let mut text = app.status.clone();
+    if app.pomodoro.active {
+        let run = if app.pomodoro.running { "▶" } else { "⏸" };
+        text = format!("{text} · {run} {}", app.pomodoro.mmss());
+    }
     if let Some(err) = &app.error {
         let short = truncate(err, 48);
         if !text.contains(&short) {

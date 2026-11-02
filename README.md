@@ -8,8 +8,9 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 
 - Today / last-week git commit panels + bar chart (commits where **you** are sole or joint author)
 - Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`)
-- Weather stub (later milestone)
-- Keys: `q` / `Esc` quit, `r` refresh
+- Weather via Open-Meteo (`RCT_WEATHER` city or `lat,lon`)
+- Pomodoro mode in the say-box (`p` / `s` / `e` / `u` / `b`)
+- Keys: `q` / `Esc` quit, `r` refresh, `p` pomodoro
 
 ## Requirements
 
@@ -41,10 +42,11 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` |
 | `RCT_UPDATE_INTERVAL` | `--update-interval` | Minutes (default 20) |
 | `RCT_MOCK` | `--mock` | Skip live RSS; use bundled kindness text |
-| `RCT_WEATHER` | — | Reserved for weather milestone |
-| `RCT_CELSIUS` | — | Reserved |
+| `RCT_WEATHER` | `--weather` | City name or `lat,lon` (Open-Meteo) |
+| `RCT_CELSIUS` | `--celsius` | `true` (default) / `false` for °F |
 | `RCT_TERMINAL_TITLE` | — | Window title (default `tiny care`) |
-| `RCT_POMODORO` / `RCT_BREAK` | — | Reserved for pomodoro |
+| `RCT_POMODORO` | `--pomodoro` | Focus minutes (default 25) |
+| `RCT_BREAK` | `--break-minutes` | Break minutes (default 5) |
 
 ```bash
 export RCT_REPOS="$HOME/Developer/play,$HOME/Code"
@@ -64,9 +66,23 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 │ git subjects                     │  bar    ├ care #2 ─┤
 │                                  │         ├ care #3 ─┤
 ├──────────── last week ───────────┴─────────┴──────────┤
-│ week commits                     │ say-box / parrot   │
+│ week commits                     │ say-box / pomodoro │
 └───────────────────────────────────────────────────────┘
 ```
+
+## Keys
+
+| Key | Action |
+| --- | --- |
+| `q` / `Esc` | Quit |
+| `r` | Refresh git / RSS / weather |
+| `p` | Toggle pomodoro in the say-box |
+| `s` | Start / pause pomodoro |
+| `e` | Reset current phase |
+| `u` / `U` | Work minutes +1 / −1 |
+| `b` / `B` | Break minutes +1 / −1 |
+
+Desktop notifications are intentionally off (quiet by default for headless/remote use).
 
 ## Credit
 
