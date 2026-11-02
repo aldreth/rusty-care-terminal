@@ -174,11 +174,16 @@ fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_else(|| "care".into());
 
     let art_text = art::say_box(&app.config.say_box, msg);
-    let lines = vec![
+    let mut lines: Vec<Line<'static>> = vec![
         Line::from(Span::styled(source, Style::default().fg(Color::Yellow))),
         Line::from(""),
-        Line::from(art_text),
     ];
+    // One ratatui Line per ASCII row — a single Line collapses newlines into mush.
+    lines.extend(
+        art_text
+            .lines()
+            .map(|row| Line::from(Span::raw(row.to_string()))),
+    );
     let widget = Paragraph::new(lines)
         .block(border_block("✨ say"))
         .wrap(Wrap { trim: false });

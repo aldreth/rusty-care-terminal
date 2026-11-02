@@ -25,36 +25,35 @@ fn speech_bubble(message: &str) -> String {
     format!("{top}\n{mid}\n{bot}")
 }
 
+// Leading spaces preserved; each figure sits under the speech-bubble tail.
 const PARROT: &str = r#"
-       \ 
-        \  .--.
-          /   o\
-         |  ___/
-          \_/ /
-          _/ /
-         / _/
-        // /
-       /_ /
+ \
+  \   .--.
+    \/ o)\
+    /\__/ \
+   //  \_\
+  //    ||
+  ||    ||
 "#;
 
 const BUNNY: &str = r#"
-       \ 
-        \   (\(\
-             (-.-)
-            o_(")(")
+ \
+  \  (\(\
+      (-.-)
+     o_(")(")
 "#;
 
 const LLAMA: &str = r#"
-       \ 
-        \    ∿
-           (oo)
-          /||||\
-         / |||| \
+ \
+  \   ~~
+     (oo)
+    /||||\
+   / |||| \
 "#;
 
 const CAT: &str = r#"
-       \ 
-        \  /\_/\
-          ( o.o )
-           > ^ <
+ \
+  \  /\_/\
+    ( o.o )
+     > ^ <
 "#;
