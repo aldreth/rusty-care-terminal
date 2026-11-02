@@ -47,7 +47,8 @@ struct Cli {
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 
-    /// Optional git log --author filter(s), comma-separated. Default: all authors.
+    /// Your identity for sole/joint authorship (comma-separated name/email).
+    /// Default: each repo's user.email / user.name. Matches author, committer, or Co-authored-by.
     #[arg(long, env = "RCT_GIT_AUTHOR")]
     git_author: Option<String>,
 

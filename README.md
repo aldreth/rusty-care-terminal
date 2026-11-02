@@ -6,7 +6,7 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 
 ## Features
 
-- Today / last-week git commit panels + bar chart (`git log` for all authors in scanned repos)
+- Today / last-week git commit panels + bar chart (commits where **you** are sole or joint author)
 - Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`)
 - Weather stub (later milestone)
 - Keys: `q` / `Esc` quit, `r` refresh

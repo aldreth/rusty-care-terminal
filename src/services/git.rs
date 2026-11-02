@@ -7,9 +7,9 @@ use walkdir::WalkDir;
 use crate::error::{CareError, Result};
 use crate::model::{CommitEntry, CommitStats};
 
-/// Discover git repos under configured roots (depth-limited) and collect commits.
-/// By default shows **all** authors (you + agents/collaborators). Pass
-/// `author_override` (`RCT_GIT_AUTHOR`) to narrow with one or more `--author` filters.
+/// Discover git repos under configured roots and collect commits where **you**
+/// are sole or joint author: git author, committer, or a `Co-authored-by` trailer
+/// matches your identity (`RCT_GIT_AUTHOR`, else each repo's `user.email` / `user.name`).
 pub fn collect_commits(
     roots: &[PathBuf],
     depth: usize,
@@ -18,14 +18,23 @@ pub fn collect_commits(
     let repos = discover_repos(roots, depth);
     let mut stats = CommitStats::default();
     let mut warnings = Vec::new();
-    let authors = author_filters(author_override);
 
     for repo in &repos {
-        match log_commits(repo, "1 day ago", &authors) {
+        let identities = identities_for_repo(repo, author_override);
+        if identities.is_empty() {
+            warnings.push(format!(
+                "{}: no git user.email/user.name (and no RCT_GIT_AUTHOR); skipping author filter — showing nothing. Set identity to see your commits.",
+                repo.display()
+            ));
+            // Safer empty than dumping everyone else's history when identity is unknown.
+            continue;
+        }
+
+        match log_commits(repo, "1 day ago", &identities) {
             Ok(mut entries) => stats.today.append(&mut entries),
             Err(e) => warnings.push(e.to_string()),
         }
-        match log_commits(repo, "7 days ago", &authors) {
+        match log_commits(repo, "7 days ago", &identities) {
             Ok(mut entries) => stats.week.append(&mut entries),
             Err(e) => warnings.push(e.to_string()),
         }
@@ -41,7 +50,6 @@ pub fn collect_commits(
 
     stats.today.sort_by(|a, b| b.when.cmp(&a.when));
     stats.week.sort_by(|a, b| b.when.cmp(&a.when));
-    // Deduplicate week vs today overlap is fine visually; keep as-is.
     (stats, warnings)
 }
 
@@ -84,10 +92,20 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn author_filters(override_author: Option<&str>) -> Vec<String> {
-    override_author
-        .map(split_authors)
-        .unwrap_or_default()
+fn identities_for_repo(repo: &Path, override_author: Option<&str>) -> Vec<String> {
+    if let Some(raw) = override_author {
+        return split_authors(raw);
+    }
+
+    let mut ids = Vec::new();
+    for key in ["user.email", "user.name"] {
+        if let Some(v) = git_config(repo, key) {
+            if !ids.iter().any(|e| e.eq_ignore_ascii_case(&v)) {
+                ids.push(v);
+            }
+        }
+    }
+    ids
 }
 
 fn split_authors(raw: &str) -> Vec<String> {
@@ -98,23 +116,36 @@ fn split_authors(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn log_commits(repo: &Path, since: &str, authors: &[String]) -> Result<Vec<CommitEntry>> {
-    let mut args = vec![
-        "-C".to_string(),
-        repo.to_str().unwrap_or(".").to_string(),
-        "log".into(),
-        "--all".into(),
-        format!("--since={since}"),
-        "--date=iso-strict".into(),
-        "--pretty=format:%h%x09%ad%x09%an%x09%s".into(),
-    ];
-    // Optional: multiple --author flags are OR'd by git.
-    for author in authors {
-        args.push(format!("--author={author}"));
-    }
-
+fn git_config(repo: &Path, key: &str) -> Option<String> {
     let output = Command::new("git")
-        .args(&args)
+        .args(["-C", repo.to_str().unwrap_or("."), "config", "--get", key])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<CommitEntry>> {
+    // Fields: hash, date, author name, author email, committer name, committer email,
+    // subject, Co-authored-by trailer values (pipe-separated).
+    let pretty = "%h%x09%ad%x09%an%x09%ae%x09%cn%x09%ce%x09%s%x09%(trailers:key=Co-authored-by,valueonly,separator=|)";
+    let output = Command::new("git")
+        .args([
+            "-C",
+            repo.to_str().unwrap_or("."),
+            "log",
+            "--all",
+            &format!("--since={since}"),
+            "--date=iso-strict",
+            &format!("--pretty=format:{pretty}"),
+        ])
         .output()
         .map_err(|e| CareError::Git {
             path: repo.display().to_string(),
@@ -140,20 +171,69 @@ fn log_commits(repo: &Path, since: &str, authors: &[String]) -> Result<Vec<Commi
         if line.trim().is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.splitn(4, '\t').collect();
-        if parts.len() < 4 {
+        let parts: Vec<&str> = line.splitn(8, '\t').collect();
+        if parts.len() < 7 {
             continue;
         }
+        let author_name = parts[2];
+        let author_email = parts[3];
+        let committer_name = parts[4];
+        let committer_email = parts[5];
+        let subject = parts[6];
+        let coauthors = parts.get(7).copied().unwrap_or("");
+
+        if !involves_you(
+            identities,
+            author_name,
+            author_email,
+            committer_name,
+            committer_email,
+            coauthors,
+        ) {
+            continue;
+        }
+
         let when = parse_git_date(parts[1]).unwrap_or_else(Local::now);
         entries.push(CommitEntry {
             repo: repo_name.clone(),
             hash: parts[0].to_string(),
-            author: parts[2].to_string(),
-            subject: parts[3].to_string(),
+            author: author_name.to_string(),
+            subject: subject.to_string(),
             when,
         });
     }
     Ok(entries)
+}
+
+/// True if any identity matches author, committer, or a Co-authored-by trailer.
+fn involves_you(
+    identities: &[String],
+    author_name: &str,
+    author_email: &str,
+    committer_name: &str,
+    committer_email: &str,
+    coauthored_by: &str,
+) -> bool {
+    let haystacks = [
+        author_name,
+        author_email,
+        committer_name,
+        committer_email,
+        coauthored_by,
+    ];
+    identities.iter().any(|id| {
+        let id = id.trim();
+        if id.is_empty() {
+            return false;
+        }
+        haystacks
+            .iter()
+            .any(|h| !h.is_empty() && contains_ignore_case(h, id))
+    })
+}
+
+fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
+    haystack.to_ascii_lowercase().contains(&needle.to_ascii_lowercase())
 }
 
 fn parse_git_date(raw: &str) -> Option<DateTime<Local>> {
@@ -165,4 +245,61 @@ fn parse_git_date(raw: &str) -> Option<DateTime<Local>> {
                 .ok()
                 .map(|dt| dt.with_timezone(&Local))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sole_author_matches() {
+        let ids = vec!["edward@aldreth.com".into()];
+        assert!(involves_you(
+            &ids,
+            "Edward",
+            "edward@aldreth.com",
+            "Edward",
+            "edward@aldreth.com",
+            "",
+        ));
+    }
+
+    #[test]
+    fn joint_via_coauthored_by() {
+        let ids = vec!["edward@aldreth.com".into(), "Edward".into()];
+        assert!(involves_you(
+            &ids,
+            "Cursor Agent",
+            "cursoragent@cursor.com",
+            "Cursor Agent",
+            "cursoragent@cursor.com",
+            "Edward Andrews-Hodgson <edward@aldreth.com>",
+        ));
+    }
+
+    #[test]
+    fn unrelated_author_excluded() {
+        let ids = vec!["edward@aldreth.com".into()];
+        assert!(!involves_you(
+            &ids,
+            "Someone Else",
+            "else@example.com",
+            "Someone Else",
+            "else@example.com",
+            "Bot <bot@example.com>",
+        ));
+    }
+
+    #[test]
+    fn joint_via_committer() {
+        let ids = vec!["edward@aldreth.com".into()];
+        assert!(involves_you(
+            &ids,
+            "Cursor Agent",
+            "cursoragent@cursor.com",
+            "Edward",
+            "edward@aldreth.com",
+            "",
+        ));
+    }
 }

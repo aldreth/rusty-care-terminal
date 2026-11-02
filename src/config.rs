@@ -18,7 +18,8 @@ pub struct Config {
     pub say_box: String,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
-    /// Optional `git log --author` filter (comma-separated). Default: all authors.
+    /// Identity strings for sole/joint authorship filter (comma-separated).
+    /// Default: each repo's `user.email` / `user.name`.
     pub git_author: Option<String>,
     pub weather: Option<String>,
     pub celsius: bool,
