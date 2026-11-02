@@ -55,7 +55,7 @@ impl App {
         self.care = mock::mock_care_messages(&self.config);
 
         let repo_note = if self.config.repos.is_empty() {
-            "no repos configured (set CARE_REPOS or config.toml)"
+            "no repos configured (set RCT_REPOS or config.toml)"
         } else {
             "git scanned"
         };

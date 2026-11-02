@@ -28,12 +28,12 @@ use config::Config;
     about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter)."
 )]
 struct Cli {
-    /// Path to TOML config (overrides CARE_CONFIG / discovery).
-    #[arg(long, env = "CARE_CONFIG")]
+    /// Path to TOML config (overrides RCT_CONFIG / discovery).
+    #[arg(long, env = "RCT_CONFIG")]
     config: Option<PathBuf>,
 
     /// Force mock care messages (default for MVP).
-    #[arg(long, env = "CARE_MOCK", default_value_t = false)]
+    #[arg(long, env = "RCT_MOCK", default_value_t = false)]
     mock: bool,
 }
 

@@ -1,5 +1,5 @@
 # Copy to ./config.toml or ~/.config/rusty-care-terminal/config.toml
-# Env overrides (CARE_* or legacy TTC_*) win over this file.
+# Env overrides (RCT_* or legacy TTC_*) win over this file.
 
 # Care sources: @user@instance resolves to https://{host}/@{user}.rss (Milestone 2).
 # You may also pass full RSS/Atom URLs here.

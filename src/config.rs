@@ -71,7 +71,7 @@ impl Config {
         let mut cfg = Config::default();
 
         let path = cli_config
-            .or_else(|| env::var_os("CARE_CONFIG").map(PathBuf::from))
+            .or_else(|| env::var_os("RCT_CONFIG").map(PathBuf::from))
             .or_else(|| env::var_os("TTC_CONFIG").map(PathBuf::from))
             .or_else(discover_config_path);
 
@@ -172,50 +172,50 @@ fn merge_file(cfg: &mut Config, file: FileConfig) {
 }
 
 fn merge_env(cfg: &mut Config) -> Result<()> {
-    // Prefer CARE_*; accept legacy TTC_* as aliases.
-    if let Some(v) = env_first(&["CARE_BOTS", "TTC_BOTS"]) {
+    // Prefer RCT_*; accept legacy TTC_* as aliases.
+    if let Some(v) = env_first(&["RCT_BOTS", "TTC_BOTS"]) {
         cfg.bots = split_csv(&v).iter().map(|b| CareSource::parse(b)).collect();
     }
-    if let Some(v) = env_first(&["CARE_BOT_FEEDS"]) {
+    if let Some(v) = env_first(&["RCT_BOT_FEEDS"]) {
         cfg.bot_feeds = split_csv(&v);
     }
-    if let Some(v) = env_first(&["CARE_SAY_BOX", "TTC_SAY_BOX"]) {
+    if let Some(v) = env_first(&["RCT_SAY_BOX", "TTC_SAY_BOX"]) {
         cfg.say_box = v;
     }
-    if let Some(v) = env_first(&["CARE_REPOS", "TTC_REPOS"]) {
+    if let Some(v) = env_first(&["RCT_REPOS", "TTC_REPOS"]) {
         cfg.repos = expand_repos(&split_csv(&v));
     }
-    if let Some(v) = env_first(&["CARE_REPOS_DEPTH", "TTC_REPOS_DEPTH"]) {
+    if let Some(v) = env_first(&["RCT_REPOS_DEPTH", "TTC_REPOS_DEPTH"]) {
         cfg.repos_depth = v
             .parse()
             .map_err(|_| CareError::Config(format!("invalid repos_depth: {v}")))?;
     }
-    if let Some(v) = env_first(&["CARE_WEATHER", "TTC_WEATHER"]) {
+    if let Some(v) = env_first(&["RCT_WEATHER", "TTC_WEATHER"]) {
         cfg.weather = Some(v);
     }
-    if let Some(v) = env_first(&["CARE_CELSIUS", "TTC_CELSIUS"]) {
+    if let Some(v) = env_first(&["RCT_CELSIUS", "TTC_CELSIUS"]) {
         cfg.celsius = parse_bool(&v)?;
     }
-    if let Some(v) = env_first(&["CARE_UPDATE_INTERVAL", "TTC_UPDATE_INTERVAL"]) {
+    if let Some(v) = env_first(&["RCT_UPDATE_INTERVAL", "TTC_UPDATE_INTERVAL"]) {
         cfg.update_interval_mins = v
             .parse::<u64>()
             .map_err(|_| CareError::Config(format!("invalid update_interval: {v}")))?
             .max(1);
     }
-    if let Some(v) = env_first(&["CARE_TERMINAL_TITLE", "TTC_TERMINAL_TITLE"]) {
+    if let Some(v) = env_first(&["RCT_TERMINAL_TITLE", "TTC_TERMINAL_TITLE"]) {
         cfg.terminal_title = v;
     }
-    if let Some(v) = env_first(&["CARE_POMODORO", "TTC_POMODORO"]) {
+    if let Some(v) = env_first(&["RCT_POMODORO", "TTC_POMODORO"]) {
         cfg.pomodoro = v
             .parse()
             .map_err(|_| CareError::Config(format!("invalid pomodoro: {v}")))?;
     }
-    if let Some(v) = env_first(&["CARE_BREAK", "TTC_BREAK"]) {
+    if let Some(v) = env_first(&["RCT_BREAK", "TTC_BREAK"]) {
         cfg.break_minutes = v
             .parse()
             .map_err(|_| CareError::Config(format!("invalid break_minutes: {v}")))?;
     }
-    if let Some(v) = env_first(&["CARE_MOCK"]) {
+    if let Some(v) = env_first(&["RCT_MOCK"]) {
         cfg.mock = parse_bool(&v)?;
     }
     Ok(())

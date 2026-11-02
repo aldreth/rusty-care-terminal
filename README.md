@@ -34,14 +34,14 @@ Repo paths come from TOML and/or env. Env wins for the same key.
 ### Env (parity with original `TTC_*`)
 
 ```bash
-export CARE_REPOS="$HOME/Code,$HOME/src/project"
-export CARE_REPOS_DEPTH=2
-export CARE_UPDATE_INTERVAL=20
+export RCT_REPOS="$HOME/Code,$HOME/src/project"
+export RCT_REPOS_DEPTH=2
+export RCT_UPDATE_INTERVAL=20
 
 # Care sources → intended RSS: https://{host}/@{user}.rss
-export CARE_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,3goodthings@fedigroups.social'
+export RCT_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,3goodthings@fedigroups.social'
 # Or explicit feeds:
-# export CARE_BOT_FEEDS='https://hachyderm.io/@selfcare.rss,...'
+# export RCT_BOT_FEEDS='https://hachyderm.io/@selfcare.rss,...'
 
 # Legacy aliases still accepted: TTC_REPOS, TTC_REPOS_DEPTH, TTC_BOTS, …
 cargo run
@@ -58,7 +58,7 @@ bots = ["selfcare@hachyderm.io", "selfcaregentle@hachyderm.io", "3goodthings@fed
 mock = true
 ```
 
-Without configured repos, commit panels stay empty (friendly placeholder copy) and the status line reminds you to set `CARE_REPOS`.
+Without configured repos, commit panels stay empty (friendly placeholder copy) and the status line reminds you to set `RCT_REPOS`.
 
 ## Layout
 
