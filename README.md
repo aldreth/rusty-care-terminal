@@ -11,7 +11,7 @@ This MVP shows:
 
 ## Requirements
 
-- Rust 1.74+ (edition 2021)
+- Rust 1.99.1+ (edition 2024; pinned in `rust-toolchain.toml`)
 - `git` on `PATH` for commit scanning
 
 ## Build & run
