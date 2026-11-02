@@ -6,7 +6,7 @@ Meant to ship as a single binary — configure with **env vars** and/or **CLI fl
 
 ## Features
 
-- Today / last-week git commit panels + bar chart (`git log`, filtered to your author)
+- Today / last-week git commit panels + bar chart (`git log` for all authors in scanned repos)
 - Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`)
 - Weather stub (later milestone)
 - Keys: `q` / `Esc` quit, `r` refresh
@@ -35,7 +35,7 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | --- | --- | --- |
 | `RCT_REPOS` | `--repos` | Comma-separated repo roots (`~/` ok) |
 | `RCT_REPOS_DEPTH` | `--repos-depth` | Nested walk depth (default 1) |
-| `RCT_GIT_AUTHOR` | `--git-author` | `git log --author` filter (default: repo `user.email` / `user.name`) |
+| `RCT_GIT_AUTHOR` | `--git-author` | Optional `git log --author` filter(s); default shows **all** authors |
 | `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
 | `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
 | `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` |

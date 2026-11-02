@@ -47,7 +47,7 @@ struct Cli {
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 
-    /// git log --author filter, comma-separated (overrides RCT_GIT_AUTHOR).
+    /// Optional git log --author filter(s), comma-separated. Default: all authors.
     #[arg(long, env = "RCT_GIT_AUTHOR")]
     git_author: Option<String>,
 

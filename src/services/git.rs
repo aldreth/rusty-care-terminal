@@ -7,8 +7,9 @@ use walkdir::WalkDir;
 use crate::error::{CareError, Result};
 use crate::model::{CommitEntry, CommitStats};
 
-/// Discover git repos under configured roots (depth-limited) and collect commits
-/// authored by the local git identity (matches original tiny-care-terminal).
+/// Discover git repos under configured roots (depth-limited) and collect commits.
+/// By default shows **all** authors (you + agents/collaborators). Pass
+/// `author_override` (`RCT_GIT_AUTHOR`) to narrow with one or more `--author` filters.
 pub fn collect_commits(
     roots: &[PathBuf],
     depth: usize,
@@ -17,9 +18,9 @@ pub fn collect_commits(
     let repos = discover_repos(roots, depth);
     let mut stats = CommitStats::default();
     let mut warnings = Vec::new();
+    let authors = author_filters(author_override);
 
     for repo in &repos {
-        let authors = author_filters(repo, author_override);
         match log_commits(repo, "1 day ago", &authors) {
             Ok(mut entries) => stats.today.append(&mut entries),
             Err(e) => warnings.push(e.to_string()),
@@ -83,20 +84,10 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn author_filters(repo: &Path, override_author: Option<&str>) -> Vec<String> {
-    if let Some(raw) = override_author {
-        return split_authors(raw);
-    }
-
-    let mut filters = Vec::new();
-    for key in ["user.email", "user.name"] {
-        if let Some(v) = git_config(repo, key) {
-            if !filters.iter().any(|f| f == &v) {
-                filters.push(v);
-            }
-        }
-    }
-    filters
+fn author_filters(override_author: Option<&str>) -> Vec<String> {
+    override_author
+        .map(split_authors)
+        .unwrap_or_default()
 }
 
 fn split_authors(raw: &str) -> Vec<String> {
@@ -105,22 +96,6 @@ fn split_authors(raw: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
-}
-
-fn git_config(repo: &Path, key: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args(["-C", repo.to_str().unwrap_or("."), "config", "--get", key])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
 }
 
 fn log_commits(repo: &Path, since: &str, authors: &[String]) -> Result<Vec<CommitEntry>> {
@@ -133,7 +108,7 @@ fn log_commits(repo: &Path, since: &str, authors: &[String]) -> Result<Vec<Commi
         "--date=iso-strict".into(),
         "--pretty=format:%h%x09%ad%x09%an%x09%s".into(),
     ];
-    // Match original care terminal: only show commits by you.
+    // Optional: multiple --author flags are OR'd by git.
     for author in authors {
         args.push(format!("--author={author}"));
     }

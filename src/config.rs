@@ -18,7 +18,7 @@ pub struct Config {
     pub say_box: String,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
-    /// Optional override for `git log --author` (comma-separated). Default: repo user.email/name.
+    /// Optional `git log --author` filter (comma-separated). Default: all authors.
     pub git_author: Option<String>,
     pub weather: Option<String>,
     pub celsius: bool,
