@@ -73,6 +73,16 @@ pub struct CommitStats {
     pub week: Vec<CommitEntry>,
 }
 
+#[derive(Debug, Clone)]
+pub struct WeatherSnapshot {
+    pub place: String,
+    pub summary: String,
+    pub temperature: String,
+    pub high_low: String,
+    pub wind: String,
+    pub fetched_at: DateTime<Local>,
+}
+
 impl CommitStats {
     pub fn today_count(&self) -> u64 {
         self.today.len() as u64

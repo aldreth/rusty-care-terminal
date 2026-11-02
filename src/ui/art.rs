@@ -1,18 +1,46 @@
-/// Tiny ASCII say-box wrapper (party-parrot spirit without full ANSI art yet).
-pub fn say_box(character: &str, message: &str, max_width: usize) -> String {
-    let art = match character.to_ascii_lowercase().as_str() {
-        "bunny" => BUNNY,
-        "llama" => LLAMA,
-        "cat" => CAT,
-        _ => PARROT, // parrot + RANDOM default
-    };
+use std::fs;
+use std::path::Path;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Tiny ASCII say-box wrapper (party-parrot spirit).
+pub fn say_box(character: &str, message: &str, max_width: usize) -> String {
+    let art = resolve_art(character);
     let bubble = speech_bubble(message, max_width);
     format!("{bubble}\n{art}")
 }
 
+fn resolve_art(character: &str) -> String {
+    let trimmed = character.trim();
+    if trimmed.is_empty() {
+        return PARROT.to_string();
+    }
+    // External art file (.cow / .ansi / plain text).
+    if Path::new(trimmed).is_file() {
+        return fs::read_to_string(trimmed)
+            .unwrap_or_else(|_| PARROT.to_string())
+            .trim_end()
+            .to_string();
+    }
+    let key = trimmed.to_ascii_lowercase();
+    let choice = if key == "random" {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        ["parrot", "bunny", "llama", "cat"][(n as usize) % 4]
+    } else {
+        key.as_str()
+    };
+    match choice {
+        "bunny" => BUNNY.to_string(),
+        "llama" => LLAMA.to_string(),
+        "cat" => CAT.to_string(),
+        _ => PARROT.to_string(),
+    }
+}
+
 fn speech_bubble(message: &str, max_width: usize) -> String {
-    // Inner text width: leave room for "< " + " >" and a little margin.
     let inner = max_width.saturating_sub(4).max(12);
     let wrapped = wrap_text(message, inner);
     let width = wrapped
@@ -84,7 +112,6 @@ fn wrap_text(message: &str, width: usize) -> Vec<String> {
     rows
 }
 
-// Leading spaces preserved; each figure sits under the speech-bubble tail.
 const PARROT: &str = r#"
  \
   \   .--.
@@ -128,5 +155,11 @@ mod tests {
         assert!(!out.contains("..."), "unexpected truncation: {out}");
         assert!(out.contains("healthy"));
         assert!(out.lines().count() > 4);
+    }
+
+    #[test]
+    fn random_resolves_to_known_art() {
+        let out = say_box("RANDOM", "hi", 40);
+        assert!(out.contains('<') || out.contains('/'));
     }
 }

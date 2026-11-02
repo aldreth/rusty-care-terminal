@@ -13,7 +13,8 @@ clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.28"
 feed-rs = "2"
 ratatui = "0.29"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
+serde_json = "1"
 shellexpand = "3"
 thiserror = "2"
 walkdir = "2"

@@ -80,6 +80,18 @@ impl Config {
         if let Some(mins) = cli.update_interval {
             cfg.update_interval_mins = mins.max(1);
         }
+        if let Some(weather) = cli.weather {
+            cfg.weather = Some(weather);
+        }
+        if let Some(celsius) = cli.celsius {
+            cfg.celsius = celsius;
+        }
+        if let Some(pomodoro) = cli.pomodoro {
+            cfg.pomodoro = pomodoro.max(1);
+        }
+        if let Some(break_minutes) = cli.break_minutes {
+            cfg.break_minutes = break_minutes.max(1);
+        }
         if cli.mock {
             cfg.mock = true;
         }
@@ -115,6 +127,10 @@ pub struct CliOverrides {
     pub say_box: Option<String>,
     pub git_author: Option<String>,
     pub update_interval: Option<u64>,
+    pub weather: Option<String>,
+    pub celsius: Option<bool>,
+    pub pomodoro: Option<u64>,
+    pub break_minutes: Option<u64>,
     pub mock: bool,
 }
 

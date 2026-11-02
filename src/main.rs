@@ -43,18 +43,33 @@ struct Cli {
     #[arg(long, env = "RCT_BOT_FEEDS")]
     bot_feeds: Option<String>,
 
-    /// Say-box character: parrot | bunny | llama | cat (overrides RCT_SAY_BOX).
+    /// Say-box character: parrot | bunny | llama | cat | RANDOM | path (overrides RCT_SAY_BOX).
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 
     /// Your identity for sole/joint authorship (comma-separated name/email).
-    /// Default: each repo's user.email / user.name. Matches author, committer, or Co-authored-by.
     #[arg(long, env = "RCT_GIT_AUTHOR")]
     git_author: Option<String>,
 
     /// Auto-refresh interval in minutes (overrides RCT_UPDATE_INTERVAL).
     #[arg(long, env = "RCT_UPDATE_INTERVAL")]
     update_interval: Option<u64>,
+
+    /// Weather location: city name or lat,lon (overrides RCT_WEATHER).
+    #[arg(long, env = "RCT_WEATHER")]
+    weather: Option<String>,
+
+    /// Use Celsius (default true). Set false / RCT_CELSIUS=false for Fahrenheit.
+    #[arg(long, env = "RCT_CELSIUS")]
+    celsius: Option<bool>,
+
+    /// Pomodoro work minutes (overrides RCT_POMODORO).
+    #[arg(long, env = "RCT_POMODORO")]
+    pomodoro: Option<u64>,
+
+    /// Pomodoro break minutes (overrides RCT_BREAK).
+    #[arg(long, env = "RCT_BREAK")]
+    break_minutes: Option<u64>,
 
     /// Force mock care messages (skip live Mastodon RSS).
     #[arg(long, env = "RCT_MOCK", default_value_t = false)]
@@ -71,6 +86,10 @@ fn main() -> anyhow::Result<()> {
         say_box: cli.say_box,
         git_author: cli.git_author,
         update_interval: cli.update_interval,
+        weather: cli.weather,
+        celsius: cli.celsius,
+        pomodoro: cli.pomodoro,
+        break_minutes: cli.break_minutes,
         mock: cli.mock,
     })
     .context("loading config")?;
@@ -98,7 +117,6 @@ fn setup_terminal(title: &str) -> anyhow::Result<Terminal<CrosstermBackend<io::S
     enable_raw_mode()?;
     let mut out = stdout();
     execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
-    // Best-effort title; ignore failures on limited terminals.
     let _ = execute!(out, crossterm::terminal::SetTitle(title));
     let backend = CrosstermBackend::new(out);
     Terminal::new(backend).context("creating terminal")

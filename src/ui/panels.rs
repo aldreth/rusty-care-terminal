@@ -4,8 +4,15 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{BarChart, Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::App;
+use crate::app::{App, PomodoroPhase};
 use crate::ui::art;
+
+// Soft care-terminal palette (avoid harsh pure cyan/magenta).
+const BORDER: Color = Color::Rgb(110, 170, 175);
+const TITLE: Color = Color::Rgb(140, 200, 195);
+const ACCENT: Color = Color::Rgb(210, 180, 120);
+const MUTED: Color = Color::Rgb(120, 130, 135);
+const BAR: Color = Color::Rgb(180, 130, 160);
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let root = Layout::default()
@@ -43,7 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     draw_today(frame, app, top[0]);
     draw_chart(frame, app, top[1]);
-    draw_weather_stub(frame, app, side[0]);
+    draw_weather(frame, app, side[0]);
     draw_care_panel(frame, app, 1, "💖 care", side[1]);
     draw_care_panel(frame, app, 2, "💬 care", side[2]);
     draw_week(frame, app, bottom[0]);
@@ -54,17 +61,20 @@ pub fn draw(frame: &mut Frame, app: &App) {
 fn border_block(title: &str) -> Block<'_> {
     Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(BORDER))
         .title(Span::styled(
             title,
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(TITLE).add_modifier(Modifier::BOLD),
         ))
 }
 
 fn draw_today(frame: &mut Frame, app: &App, area: Rect) {
-    let lines = commit_lines(&app.commits.today, "tiny commit bot is looking for tiny commits!");
+    let empty = if app.loading {
+        "loading tiny commits…"
+    } else {
+        "tiny commit bot is looking for tiny commits!"
+    };
+    let lines = commit_lines(&app.commits.today, empty);
     let widget = Paragraph::new(lines)
         .block(border_block("📝 last 24 hours"))
         .wrap(Wrap { trim: true });
@@ -72,7 +82,12 @@ fn draw_today(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_week(frame: &mut Frame, app: &App, area: Rect) {
-    let lines = commit_lines(&app.commits.week, "no commits this week yet — soft start is fine");
+    let empty = if app.loading {
+        "loading week…"
+    } else {
+        "no commits this week yet — soft start is fine"
+    };
+    let lines = commit_lines(&app.commits.week, empty);
     let widget = Paragraph::new(lines)
         .block(border_block("📝 last week"))
         .wrap(Wrap { trim: true });
@@ -83,54 +98,83 @@ fn commit_lines(entries: &[crate::model::CommitEntry], empty: &str) -> Vec<Line<
     if entries.is_empty() {
         return vec![Line::from(Span::styled(
             empty.to_string(),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(MUTED),
         ))];
     }
     entries
         .iter()
         .take(40)
         .map(|c| {
-            let text = format!(
-                "[{}] {} — {}",
-                c.repo,
-                c.hash,
-                truncate(&c.subject, 60)
-            );
+            let text = format!("[{}] {} — {}", c.repo, c.hash, truncate(&c.subject, 60));
             Line::from(Span::raw(text))
         })
         .collect()
 }
 
 fn draw_chart(frame: &mut Frame, app: &App, area: Rect) {
-    let today = app.commits.today_count().max(0);
-    let week = app.commits.week_count().max(0);
-    // BarChart needs non-zero visual height; show at least a stub bar of 0.
+    let today = app.commits.today_count();
+    let week = app.commits.week_count();
     let data = [("24h", today), ("7d", week)];
     let chart = BarChart::default()
         .block(border_block("commits"))
         .data(&data)
         .bar_width(5)
         .bar_gap(2)
-        .bar_style(Style::default().fg(Color::Magenta))
+        .bar_style(Style::default().fg(BAR))
         .value_style(
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
         )
-        .label_style(Style::default().fg(Color::Cyan));
+        .label_style(Style::default().fg(TITLE));
     frame.render_widget(chart, area);
 }
 
-fn draw_weather_stub(frame: &mut Frame, app: &App, area: Rect) {
-    let place = app
-        .config
-        .weather
-        .as_deref()
-        .unwrap_or("somewhere cozy");
-    let text = format!(
-        "{place}\n\n(weather arrives in a later milestone)\n\nTake a breath. Look out a window."
-    );
-    let widget = Paragraph::new(text)
+fn draw_weather(frame: &mut Frame, app: &App, area: Rect) {
+    let lines = if app.loading && app.weather.is_none() {
+        vec![Line::from(Span::styled(
+            "loading weather…",
+            Style::default().fg(MUTED),
+        ))]
+    } else if let Some(w) = &app.weather {
+        vec![
+            Line::from(Span::styled(
+                w.place.clone(),
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(format!("{} · {}", w.temperature, w.summary)),
+            Line::from(w.high_low.clone()),
+            Line::from(Span::styled(w.wind.clone(), Style::default().fg(MUTED))),
+            Line::from(Span::styled(
+                format!("updated {}", w.fetched_at.format("%H:%M")),
+                Style::default().fg(MUTED),
+            )),
+        ]
+    } else if app.config.weather.is_some() {
+        vec![
+            Line::from(Span::styled(
+                "weather unavailable",
+                Style::default().fg(MUTED),
+            )),
+            Line::from(""),
+            Line::from("Take a breath. Look out a window."),
+        ]
+    } else {
+        vec![
+            Line::from(Span::styled(
+                "somewhere cozy",
+                Style::default().fg(ACCENT),
+            )),
+            Line::from(""),
+            Line::from("Set RCT_WEATHER or --weather"),
+            Line::from("(city name or lat,lon)"),
+            Line::from(""),
+            Line::from("Take a breath. Look out a window."),
+        ]
+    };
+
+    let widget = Paragraph::new(lines)
         .block(border_block("🌤 weather"))
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
@@ -138,6 +182,9 @@ fn draw_weather_stub(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_care_panel(frame: &mut Frame, app: &App, index: usize, title: &str, area: Rect) {
     let (label, body) = match app.care.get(index) {
+        Some(msg) if app.loading && msg.text.is_empty() => {
+            ("…".into(), "loading care…".into())
+        }
         Some(msg) => {
             let tag = if msg.from_mock { "mock" } else { "live" };
             (
@@ -145,10 +192,11 @@ fn draw_care_panel(frame: &mut Frame, app: &App, index: usize, title: &str, area
                 msg.text.clone(),
             )
         }
+        None if app.loading => ("…".into(), "loading care…".into()),
         None => ("—".into(), "Hi! You're doing great!!!".into()),
     };
     let lines = vec![
-        Line::from(Span::styled(label, Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(label, Style::default().fg(ACCENT))),
         Line::from(""),
         Line::from(body),
     ];
@@ -159,6 +207,11 @@ fn draw_care_panel(frame: &mut Frame, app: &App, index: usize, title: &str, area
 }
 
 fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
+    if app.pomodoro.active {
+        draw_pomodoro(frame, app, area);
+        return;
+    }
+
     let msg = app
         .care
         .first()
@@ -168,19 +221,17 @@ fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
         .care
         .first()
         .map(|m| {
-            let tag = if m.from_mock { "mock RSS path" } else { "rss" };
+            let tag = if m.from_mock { "mock" } else { "rss" };
             format!("{} · {tag}", m.source_label)
         })
         .unwrap_or_else(|| "care".into());
 
-    // Inner width inside borders; bubble wraps to this instead of hard-truncating.
     let max_width = area.width.saturating_sub(2) as usize;
     let art_text = art::say_box(&app.config.say_box, msg, max_width);
     let mut lines: Vec<Line<'static>> = vec![
-        Line::from(Span::styled(source, Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(source, Style::default().fg(ACCENT))),
         Line::from(""),
     ];
-    // One ratatui Line per ASCII row — a single Line collapses newlines into mush.
     lines.extend(
         art_text
             .lines()
@@ -192,9 +243,44 @@ fn draw_say_box(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(widget, area);
 }
 
+fn draw_pomodoro(frame: &mut Frame, app: &App, area: Rect) {
+    let p = &app.pomodoro;
+    let state = if p.running { "running" } else { "paused" };
+    let phase = match p.phase {
+        PomodoroPhase::Work => "🍅 focus",
+        PomodoroPhase::Break => "🍵 break",
+    };
+    let lines = vec![
+        Line::from(Span::styled(
+            format!("{phase} · {state}"),
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            p.mmss(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(format!(
+            "work {}m · break {}m",
+            p.work_mins, p.break_mins
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "s start/pause · e reset · u +work · b +break · p exit",
+            Style::default().fg(MUTED),
+        )),
+    ];
+    let widget = Paragraph::new(lines)
+        .block(border_block("🍅 pomodoro"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(widget, area);
+}
+
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let mut text = app.status.clone();
-    // Surface a short first warning in the status line (never eprintln into the TUI).
     if let Some(err) = &app.error {
         let short = truncate(err, 48);
         if !text.contains(&short) {
@@ -204,7 +290,7 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     if app.loading {
         text = format!("loading… · {text}");
     }
-    let widget = Paragraph::new(text).style(Style::default().fg(Color::Gray));
+    let widget = Paragraph::new(text).style(Style::default().fg(MUTED));
     frame.render_widget(widget, area);
 }
 
