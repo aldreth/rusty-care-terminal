@@ -1,0 +1,25 @@
+[package]
+name = "tiny-care-terminal"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "A gentle Rust + ratatui care terminal inspired by tiny-care-terminal, with Mastodon RSS care feeds"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.28"
+dirs = "5"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+shellexpand = "3"
+thiserror = "2"
+toml = "0.8"
+walkdir = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1

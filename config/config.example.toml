@@ -1,0 +1,35 @@
+# Copy to ./config.toml or ~/.config/tiny-care-terminal/config.toml
+# Env overrides (CARE_* or legacy TTC_*) win over this file.
+
+# Care sources: @user@instance resolves to https://{host}/@{user}.rss (Milestone 2).
+# You may also pass full RSS/Atom URLs here.
+bots = [
+  "selfcare@hachyderm.io",
+  "selfcaregentle@hachyderm.io",
+  "3goodthings@fedigroups.social",
+]
+
+# Optional explicit RSS feeds (same panel order). When set, these are preferred.
+# bot_feeds = [
+#   "https://hachyderm.io/@selfcare.rss",
+# ]
+
+say_box = "parrot" # parrot | bunny | llama | cat
+
+# Git roots to scan (absolute or ~/ paths). Depth walks nested repos.
+repos = ["~/Code"]
+repos_depth = 2
+
+# Weather placeholder until Milestone 3
+# weather = "Paris"
+celsius = true
+
+update_interval = 20
+terminal_title = "tiny care"
+
+# Pomodoro lengths reserved for a later milestone
+pomodoro = 25
+break_minutes = 5
+
+# MVP care panels use mock text; live RSS arrives in Milestone 2
+mock = true
