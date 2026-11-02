@@ -35,7 +35,7 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | --- | --- | --- |
 | `RCT_REPOS` | `--repos` | Comma-separated repo roots (`~/` ok) |
 | `RCT_REPOS_DEPTH` | `--repos-depth` | Nested walk depth (default 1) |
-| `RCT_GIT_AUTHOR` | `--git-author` | Optional `git log --author` filter(s); default shows **all** authors |
+| `RCT_GIT_AUTHOR` | `--git-author` | Your name/email(s) for authorship filter; default = repo `user.email` / `user.name` |
 | `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
 | `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
 | `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` |
@@ -54,6 +54,8 @@ rusty-care-terminal
 ```
 
 Without `RCT_REPOS` / `--repos`, commit panels stay empty with a friendly placeholder.
+
+Git panels include a commit if you are the **author**, the **committer**, or listed in a **`Co-authored-by`** trailer (so Cursor/agent joint commits count). Unrelated authors in the same folder tree are skipped. Set `RCT_GIT_AUTHOR` if your identity isn’t in the repo’s git config.
 
 ## Layout
 

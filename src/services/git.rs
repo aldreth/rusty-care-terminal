@@ -100,7 +100,10 @@ fn identities_for_repo(repo: &Path, override_author: Option<&str>) -> Vec<String
     let mut ids = Vec::new();
     for key in ["user.email", "user.name"] {
         if let Some(v) = git_config(repo, key) {
-            if !ids.iter().any(|e| e.eq_ignore_ascii_case(&v)) {
+            if !ids
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(&v))
+            {
                 ids.push(v);
             }
         }
