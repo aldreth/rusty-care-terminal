@@ -189,6 +189,8 @@ impl App {
         self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.last_refresh_at = Local::now();
+        self.scroll_today = 0;
+        self.scroll_week = 0;
         self.loading = false;
     }
 
