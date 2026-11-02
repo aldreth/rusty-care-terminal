@@ -57,7 +57,7 @@ impl App {
         self.warnings.extend(care_warnings);
 
         let repo_note = if self.config.repos.is_empty() {
-            "no repos configured (set RCT_REPOS or config.toml)"
+            "no repos configured (set RCT_REPOS or --repos)"
         } else {
             "git scanned"
         };

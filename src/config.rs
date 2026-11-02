@@ -1,8 +1,5 @@
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use serde::Deserialize;
+use std::path::PathBuf;
 
 use crate::error::{CareError, Result};
 use crate::model::CareSource;
@@ -30,24 +27,6 @@ pub struct Config {
     pub pomodoro: u64,
     pub break_minutes: u64,
     pub mock: bool,
-    pub config_path: Option<PathBuf>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct FileConfig {
-    bots: Option<Vec<String>>,
-    bot_feeds: Option<Vec<String>>,
-    say_box: Option<String>,
-    repos: Option<Vec<String>>,
-    repos_depth: Option<usize>,
-    git_author: Option<String>,
-    weather: Option<String>,
-    celsius: Option<bool>,
-    update_interval: Option<u64>,
-    terminal_title: Option<String>,
-    pomodoro: Option<u64>,
-    break_minutes: Option<u64>,
-    mock: Option<bool>,
 }
 
 impl Default for Config {
@@ -65,32 +44,42 @@ impl Default for Config {
             terminal_title: "tiny care".into(),
             pomodoro: 25,
             break_minutes: 5,
-            mock: false, // live Mastodon RSS by default; --mock / RCT_MOCK for offline
-            config_path: None,
+            mock: false,
         }
     }
 }
 
 impl Config {
-    pub fn load(cli_config: Option<PathBuf>, force_mock: bool) -> Result<Self> {
+    /// Load from environment (`RCT_*`, with legacy `TTC_*` aliases) and CLI overrides.
+    pub fn load(cli: CliOverrides) -> Result<Self> {
         let mut cfg = Config::default();
-
-        let path = cli_config
-            .or_else(|| env::var_os("RCT_CONFIG").map(PathBuf::from))
-            .or_else(|| env::var_os("TTC_CONFIG").map(PathBuf::from))
-            .or_else(discover_config_path);
-
-        if let Some(ref p) = path {
-            if p.is_file() {
-                let file = load_file(p)?;
-                merge_file(&mut cfg, file);
-                cfg.config_path = Some(p.clone());
-            }
-        }
-
         merge_env(&mut cfg)?;
 
-        if force_mock {
+        if let Some(repos) = cli.repos {
+            cfg.repos = expand_repos(&split_csv(&repos));
+        }
+        if let Some(depth) = cli.repos_depth {
+            cfg.repos_depth = depth;
+        }
+        if let Some(bots) = cli.bots {
+            cfg.bots = split_csv(&bots)
+                .iter()
+                .map(|b| CareSource::parse(b))
+                .collect();
+        }
+        if let Some(feeds) = cli.bot_feeds {
+            cfg.bot_feeds = split_csv(&feeds);
+        }
+        if let Some(say_box) = cli.say_box {
+            cfg.say_box = say_box;
+        }
+        if let Some(author) = cli.git_author {
+            cfg.git_author = Some(author);
+        }
+        if let Some(mins) = cli.update_interval {
+            cfg.update_interval_mins = mins.max(1);
+        }
+        if cli.mock {
             cfg.mock = true;
         }
 
@@ -101,7 +90,6 @@ impl Config {
                 .iter()
                 .map(|u| CareSource::FeedUrl(u.clone()))
                 .collect();
-            // Keep acct bots beyond feed list length for labeling/defaults.
             if sources.len() < cfg.bots.len() {
                 sources.extend(cfg.bots.iter().skip(sources.len()).cloned());
             }
@@ -116,67 +104,17 @@ impl Config {
     }
 }
 
-fn discover_config_path() -> Option<PathBuf> {
-    let local = PathBuf::from("config.toml");
-    if local.is_file() {
-        return Some(local);
-    }
-    let sample = PathBuf::from("config/config.example.toml");
-    if sample.is_file() {
-        // Prefer example only as discovery hint — do not auto-load sample as live config.
-    }
-    dirs::config_dir().map(|d| d.join("rusty-care-terminal").join("config.toml"))
-}
-
-fn load_file(path: &Path) -> Result<FileConfig> {
-    let text = fs::read_to_string(path).map_err(|e| {
-        CareError::Config(format!("failed to read {}: {e}", path.display()))
-    })?;
-    toml::from_str(&text).map_err(|e| {
-        CareError::Config(format!("invalid TOML in {}: {e}", path.display()))
-    })
-}
-
-fn merge_file(cfg: &mut Config, file: FileConfig) {
-    if let Some(bots) = file.bots {
-        cfg.bots = bots.iter().map(|b| CareSource::parse(b)).collect();
-    }
-    if let Some(feeds) = file.bot_feeds {
-        cfg.bot_feeds = feeds;
-    }
-    if let Some(v) = file.say_box {
-        cfg.say_box = v;
-    }
-    if let Some(repos) = file.repos {
-        cfg.repos = expand_repos(&repos);
-    }
-    if let Some(v) = file.repos_depth {
-        cfg.repos_depth = v;
-    }
-    if let Some(v) = file.git_author {
-        cfg.git_author = Some(v);
-    }
-    if let Some(v) = file.weather {
-        cfg.weather = Some(v);
-    }
-    if let Some(v) = file.celsius {
-        cfg.celsius = v;
-    }
-    if let Some(v) = file.update_interval {
-        cfg.update_interval_mins = v.max(1);
-    }
-    if let Some(v) = file.terminal_title {
-        cfg.terminal_title = v;
-    }
-    if let Some(v) = file.pomodoro {
-        cfg.pomodoro = v;
-    }
-    if let Some(v) = file.break_minutes {
-        cfg.break_minutes = v;
-    }
-    if let Some(v) = file.mock {
-        cfg.mock = v;
-    }
+/// Values from clap that override env / defaults.
+#[derive(Debug, Default)]
+pub struct CliOverrides {
+    pub repos: Option<String>,
+    pub repos_depth: Option<usize>,
+    pub bots: Option<String>,
+    pub bot_feeds: Option<String>,
+    pub say_box: Option<String>,
+    pub git_author: Option<String>,
+    pub update_interval: Option<u64>,
+    pub mock: bool,
 }
 
 fn merge_env(cfg: &mut Config) -> Result<()> {

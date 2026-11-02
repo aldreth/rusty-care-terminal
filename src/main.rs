@@ -6,7 +6,6 @@ mod services;
 mod ui;
 
 use std::io::{self, stdout};
-use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -20,7 +19,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use app::{App, AppAction};
-use config::Config;
+use config::{CliOverrides, Config};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -28,9 +27,33 @@ use config::Config;
     about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter)."
 )]
 struct Cli {
-    /// Path to TOML config (overrides RCT_CONFIG / discovery).
-    #[arg(long, env = "RCT_CONFIG")]
-    config: Option<PathBuf>,
+    /// Comma-separated repo roots to scan (overrides RCT_REPOS).
+    #[arg(long, env = "RCT_REPOS")]
+    repos: Option<String>,
+
+    /// Max walk depth under each repo root (overrides RCT_REPOS_DEPTH).
+    #[arg(long, env = "RCT_REPOS_DEPTH")]
+    repos_depth: Option<usize>,
+
+    /// Comma-separated @user@instance care sources (overrides RCT_BOTS).
+    #[arg(long, env = "RCT_BOTS")]
+    bots: Option<String>,
+
+    /// Comma-separated explicit RSS/Atom URLs (overrides RCT_BOT_FEEDS).
+    #[arg(long, env = "RCT_BOT_FEEDS")]
+    bot_feeds: Option<String>,
+
+    /// Say-box character: parrot | bunny | llama | cat (overrides RCT_SAY_BOX).
+    #[arg(long, env = "RCT_SAY_BOX")]
+    say_box: Option<String>,
+
+    /// git log --author filter, comma-separated (overrides RCT_GIT_AUTHOR).
+    #[arg(long, env = "RCT_GIT_AUTHOR")]
+    git_author: Option<String>,
+
+    /// Auto-refresh interval in minutes (overrides RCT_UPDATE_INTERVAL).
+    #[arg(long, env = "RCT_UPDATE_INTERVAL")]
+    update_interval: Option<u64>,
 
     /// Force mock care messages (skip live Mastodon RSS).
     #[arg(long, env = "RCT_MOCK", default_value_t = false)]
@@ -39,7 +62,17 @@ struct Cli {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let config = Config::load(cli.config, cli.mock).context("loading config")?;
+    let config = Config::load(CliOverrides {
+        repos: cli.repos,
+        repos_depth: cli.repos_depth,
+        bots: cli.bots,
+        bot_feeds: cli.bot_feeds,
+        say_box: cli.say_box,
+        git_author: cli.git_author,
+        update_interval: cli.update_interval,
+        mock: cli.mock,
+    })
+    .context("loading config")?;
 
     let mut terminal = setup_terminal(&config.terminal_title)?;
     let result = run(&mut terminal, config);

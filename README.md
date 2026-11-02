@@ -1,67 +1,59 @@
 # rusty-care-terminal
 
-A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal), rebuilt in **Rust** with **ratatui**. Care messages are designed for **Mastodon RSS** (no Twitter).
+A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal), rebuilt in **Rust** with **ratatui**. Care messages come from **Mastodon RSS** (no Twitter).
 
-This MVP shows:
+Meant to ship as a single binary — configure with **env vars** and/or **CLI flags** (no config file).
 
-- Today / last-week git commit panels + bar chart (real `git log` scan)
-- Care / say panels fed from **Mastodon RSS** (`@user@instance` → `https://{host}/@{user}.rss`)
-- Weather stub
+## Features
+
+- Today / last-week git commit panels + bar chart (`git log`, filtered to your author)
+- Care / say panels from Mastodon RSS (`@user@instance` → `https://{host}/@{user}.rss`)
+- Weather stub (later milestone)
 - Keys: `q` / `Esc` quit, `r` refresh
 
 ## Requirements
 
-- Rust 1.99.1+ (edition 2024; pinned in `rust-toolchain.toml`)
+- Rust 1.99.1+ to build (edition 2024; pinned in `rust-toolchain.toml`)
 - `git` on `PATH` for commit scanning
 
 ## Build & run
 
 ```bash
-cargo build
-cargo run
+cargo build --release
+./target/release/rusty-care-terminal
 
-# with an explicit config
-cargo run -- --config ./config.toml
-
-# offline care fixtures (no network)
-cargo run -- --mock
+# or while developing
+cargo run -- --repos "$HOME/Code" --repos-depth 2
+cargo run -- --mock   # offline care text
 ```
 
+## Configuration
 
-## Configure repos
+Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work for the original tiny-care names.
 
-Repo paths come from TOML and/or env. Env wins for the same key.
-
-### Env (parity with original `TTC_*`)
+| Env | CLI | Purpose |
+| --- | --- | --- |
+| `RCT_REPOS` | `--repos` | Comma-separated repo roots (`~/` ok) |
+| `RCT_REPOS_DEPTH` | `--repos-depth` | Nested walk depth (default 1) |
+| `RCT_GIT_AUTHOR` | `--git-author` | `git log --author` filter (default: repo `user.email` / `user.name`) |
+| `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
+| `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
+| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` |
+| `RCT_UPDATE_INTERVAL` | `--update-interval` | Minutes (default 20) |
+| `RCT_MOCK` | `--mock` | Skip live RSS; use bundled kindness text |
+| `RCT_WEATHER` | — | Reserved for weather milestone |
+| `RCT_CELSIUS` | — | Reserved |
+| `RCT_TERMINAL_TITLE` | — | Window title (default `tiny care`) |
+| `RCT_POMODORO` / `RCT_BREAK` | — | Reserved for pomodoro |
 
 ```bash
-export RCT_REPOS="$HOME/Code,$HOME/src/project"
+export RCT_REPOS="$HOME/Developer/play,$HOME/Code"
 export RCT_REPOS_DEPTH=2
-export RCT_UPDATE_INTERVAL=20
-# Only show commits by you (default: each repo's user.email / user.name)
-# export RCT_GIT_AUTHOR='you@example.com'
-
-# Care sources → https://{host}/@{user}.rss
 export RCT_BOTS='selfcare@hachyderm.io,selfcaregentle@hachyderm.io,GoatsLive@mastodon.social'
-# Or explicit feeds:
-# export RCT_BOT_FEEDS='https://hachyderm.io/@selfcare.rss,...'
-
-# Legacy aliases still accepted: TTC_REPOS, TTC_REPOS_DEPTH, TTC_BOTS, …
-cargo run
+rusty-care-terminal
 ```
 
-### TOML
-
-Copy [`config/config.example.toml`](config/config.example.toml) to `./config.toml` or `~/.config/rusty-care-terminal/config.toml`.
-
-```toml
-repos = ["~/Code"]
-repos_depth = 2
-bots = ["selfcare@hachyderm.io", "selfcaregentle@hachyderm.io", "3goodthings@fedigroups.social"]
-mock = true
-```
-
-Without configured repos, commit panels stay empty (friendly placeholder copy) and the status line reminds you to set `RCT_REPOS`.
+Without `RCT_REPOS` / `--repos`, commit panels stay empty with a friendly placeholder.
 
 ## Layout
 
@@ -73,10 +65,6 @@ Without configured repos, commit panels stay empty (friendly placeholder copy) a
 │ week commits                     │ say-box / parrot   │
 └───────────────────────────────────────────────────────┘
 ```
-
-## Roadmap
-
-See the project plan: Mastodon **RSS-first** care feeds, then weather, art polish, and pomodoro.
 
 ## Credit
 

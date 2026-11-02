@@ -1,9 +1,7 @@
 use chrono::{DateTime, Local};
-use serde::{Deserialize, Serialize};
 
-/// How a care source is addressed. MVP uses mock text; Milestone 2 fetches via RSS.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
+/// How a care source is addressed (`@user@instance` or an explicit feed URL).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CareSource {
     /// `@user@instance` or `user@instance` → resolve to `https://{host}/@{user}.rss`
     Acct(String),
