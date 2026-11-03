@@ -1,11 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Duration, Local};
 use walkdir::WalkDir;
 
 use crate::error::{CareError, Result};
-use crate::model::{CommitEntry, CommitStats};
+use crate::model::{CommitEntry, CommitStats, clean_text};
+
+const FIELD: char = '\u{1f}';
+const COAUTHOR_SEP: char = '\u{1e}';
 
 /// Discover git repos under configured roots and collect commits where **you**
 /// are sole or joint author: git author, committer, or a `Co-authored-by` trailer
@@ -15,36 +18,35 @@ pub fn collect_commits(
     depth: usize,
     author_override: Option<&str>,
 ) -> (CommitStats, Vec<String>) {
-    let repos = discover_repos(roots, depth);
     let mut stats = CommitStats::default();
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<String> = roots
+        .iter()
+        .filter(|r| !r.exists())
+        .map(|r| format!("repo path missing: {}", r.display()))
+        .collect();
 
-    for repo in &repos {
-        let identities = identities_for_repo(repo, author_override);
+    let day_ago = Local::now() - Duration::hours(24);
+    for repo in discover_repos(roots, depth) {
+        let identities = identities_for_repo(&repo, author_override);
         if identities.is_empty() {
+            // Safer to show nothing than everyone else's history.
             warnings.push(format!(
-                "{}: no git user.email/user.name (and no RCT_GIT_AUTHOR); skipping author filter — showing nothing. Set identity to see your commits.",
+                "{}: no git user.email/user.name — set RCT_GIT_AUTHOR to see your commits",
                 repo.display()
             ));
-            // Safer empty than dumping everyone else's history when identity is unknown.
             continue;
         }
 
-        match log_commits(repo, "1 day ago", &identities) {
-            Ok(mut entries) => stats.today.append(&mut entries),
-            Err(e) => warnings.push(e.to_string()),
-        }
-        match log_commits(repo, "7 days ago", &identities) {
-            Ok(mut entries) => stats.week.append(&mut entries),
-            Err(e) => warnings.push(e.to_string()),
-        }
-    }
-
-    if roots.iter().any(|r| !r.exists()) {
-        for root in roots {
-            if !root.exists() {
-                warnings.push(format!("repo path missing: {}", root.display()));
+        match log_week(&repo, &identities) {
+            Ok(commits) => {
+                for (entry, committed) in commits {
+                    if committed >= day_ago {
+                        stats.today.push(entry.clone());
+                    }
+                    stats.week.push(entry);
+                }
             }
+            Err(e) => warnings.push(e.to_string()),
         }
     }
 
@@ -55,259 +57,246 @@ pub fn collect_commits(
 
 pub fn discover_repos(roots: &[PathBuf], depth: usize) -> Vec<PathBuf> {
     let mut found = Vec::new();
-
-    for root in roots {
-        if !root.exists() {
-            continue;
-        }
-
-        if is_git_repo(root) {
-            found.push(root.clone());
-        }
-
-        let max_depth = depth.max(1);
+    for root in roots.iter().filter(|r| r.exists()) {
         for entry in WalkDir::new(root)
             .follow_links(false)
-            .max_depth(max_depth)
+            .max_depth(depth.max(1))
             .into_iter()
             .filter_entry(|e| e.file_name() != ".git")
             .flatten()
         {
-            let path = entry.path();
-            if entry.file_type().is_dir() && path.join(".git").exists() {
-                let repo = path.to_path_buf();
-                if !found.iter().any(|p| p == &repo) {
-                    found.push(repo);
-                }
+            if entry.file_type().is_dir() && entry.path().join(".git").exists() {
+                found.push(entry.into_path());
             }
         }
     }
-
     found.sort();
     found.dedup();
     found
 }
 
-fn is_git_repo(path: &Path) -> bool {
-    path.join(".git").exists()
+fn git(repo: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    cmd
 }
 
 fn identities_for_repo(repo: &Path, override_author: Option<&str>) -> Vec<String> {
     if let Some(raw) = override_author {
-        return split_authors(raw);
+        return raw
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
     }
-
-    let mut ids = Vec::new();
-    for key in ["user.email", "user.name"] {
-        if let Some(v) = git_config(repo, key)
-            && !ids
-                .iter()
-                .any(|existing: &String| existing.eq_ignore_ascii_case(&v))
-        {
-            ids.push(v);
-        }
-    }
-    ids
-}
-
-fn split_authors(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    ["user.email", "user.name"]
+        .iter()
+        .filter_map(|key| git_config(repo, key))
         .collect()
 }
 
 fn git_config(repo: &Path, key: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args(["-C", repo.to_str().unwrap_or("."), "config", "--get", key])
-        .output()
-        .ok()?;
+    let output = git(repo).args(["config", "--get", key]).output().ok()?;
     if !output.status.success() {
         return None;
     }
     let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() { None } else { Some(value) }
+    (!value.is_empty()).then_some(value)
 }
 
-fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<CommitEntry>> {
-    // Fields: hash, date, author name, author email, committer name, committer email,
-    // subject, Co-authored-by trailer values (pipe-separated).
-    let pretty = "%h%x09%ad%x09%an%x09%ae%x09%cn%x09%ce%x09%s%x09%(trailers:key=Co-authored-by,valueonly,separator=|)";
-    let output = Command::new("git")
+/// Your commits from the last 7 days with their committer time (used for "today").
+fn log_week(repo: &Path, identities: &[String]) -> Result<Vec<(CommitEntry, DateTime<Local>)>> {
+    // hash, author date, committer date, author name/email, committer name/email,
+    // subject, Co-authored-by values.
+    let pretty = "%h%x1f%aI%x1f%cI%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%s%x1f\
+                  %(trailers:key=Co-authored-by,valueonly,separator=%x1e)";
+    let output = git(repo)
         .args([
-            "-C",
-            repo.to_str().unwrap_or("."),
             "log",
+            "--exclude=refs/stash",
             "--all",
-            &format!("--since={since}"),
-            "--date=iso-strict",
+            "--no-color",
+            "--no-show-signature",
+            "--since=7.days.ago",
             &format!("--pretty=format:{pretty}"),
         ])
         .output()
         .map_err(|e| CareError::Git {
             path: repo.display().to_string(),
-            message: format!("failed to spawn git: {e}"),
+            message: format!("failed to run git: {e}"),
         })?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(CareError::Git {
             path: repo.display().to_string(),
-            message: stderr.trim().to_string(),
+            message: clean_text(&String::from_utf8_lossy(&output.stderr)),
         });
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
     let repo_label = display_repo_path(repo);
-
-    let mut entries = Vec::new();
-    for line in stdout.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.splitn(8, '\t').collect();
-        if parts.len() < 7 {
-            continue;
-        }
-        let author_name = parts[2];
-        let author_email = parts[3];
-        let committer_name = parts[4];
-        let committer_email = parts[5];
-        let subject = parts[6];
-        let coauthors = parts.get(7).copied().unwrap_or("");
-
-        if !involves_you(
-            identities,
-            author_name,
-            author_email,
-            committer_name,
-            committer_email,
-            coauthors,
-        ) {
-            continue;
-        }
-
-        let when = parse_git_date(parts[1]).unwrap_or_else(Local::now);
-        entries.push(CommitEntry {
-            repo: repo_label.clone(),
-            hash: parts[0].to_string(),
-            author: author_name.to_string(),
-            subject: subject.to_string(),
-            when,
-        });
-    }
-    Ok(entries)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter_map(|line| parse_log_line(line, identities, &repo_label))
+        .collect())
 }
 
-/// Prefer `~/…` for paths under `$HOME` so headings stay short.
-fn display_repo_path(repo: &Path) -> String {
-    if let Ok(home) = std::env::var("HOME") {
-        let home = PathBuf::from(home);
-        if let Ok(rest) = repo.strip_prefix(&home) {
-            return format!("~/{}", rest.display());
-        }
-    }
-    repo.display().to_string()
-}
-
-/// True if any identity matches author, committer, or a Co-authored-by trailer.
-fn involves_you(
+fn parse_log_line(
+    line: &str,
     identities: &[String],
-    author_name: &str,
-    author_email: &str,
-    committer_name: &str,
-    committer_email: &str,
-    coauthored_by: &str,
-) -> bool {
-    let haystacks = [
-        author_name,
-        author_email,
-        committer_name,
-        committer_email,
-        coauthored_by,
-    ];
+    repo_label: &str,
+) -> Option<(CommitEntry, DateTime<Local>)> {
+    let f: Vec<&str> = line.splitn(9, FIELD).collect();
+    let [
+        hash,
+        authored,
+        committed,
+        an,
+        ae,
+        cn,
+        ce,
+        subject,
+        coauthors,
+    ] = f[..]
+    else {
+        return None;
+    };
+    let mut people = vec![(an, ae), (cn, ce)];
+    people.extend(
+        coauthors
+            .split(COAUTHOR_SEP)
+            .filter(|c| !c.trim().is_empty())
+            .map(parse_person),
+    );
+    if !involves_you(identities, &people) {
+        return None;
+    }
+    let committed = parse_git_date(committed)?;
+    Some((
+        CommitEntry {
+            repo: repo_label.to_string(),
+            hash: clean_text(hash),
+            subject: clean_text(subject),
+            when: parse_git_date(authored).unwrap_or(committed),
+        },
+        committed,
+    ))
+}
+
+/// `Name <email>` → `(name, email)`; a bare value is treated as both.
+fn parse_person(raw: &str) -> (&str, &str) {
+    match raw.split_once('<') {
+        Some((name, rest)) => (name.trim(), rest.trim_end().trim_end_matches('>').trim()),
+        None => (raw.trim(), raw.trim()),
+    }
+}
+
+/// True if an identity exactly matches (case-insensitively) the name or email of
+/// the author, committer, or a co-author. Values containing `@` match emails;
+/// anything else matches names.
+fn involves_you(identities: &[String], people: &[(&str, &str)]) -> bool {
     identities.iter().any(|id| {
-        let id = id.trim();
-        if id.is_empty() {
-            return false;
+        let (id_name, id_email) = parse_person(id);
+        if id_email.contains('@') {
+            people
+                .iter()
+                .any(|(_, email)| email.eq_ignore_ascii_case(id_email))
+        } else {
+            let wanted = id_name.to_lowercase();
+            !wanted.is_empty() && people.iter().any(|(name, _)| name.to_lowercase() == wanted)
         }
-        haystacks
-            .iter()
-            .any(|h| !h.is_empty() && contains_ignore_case(h, id))
     })
 }
 
-fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
-    haystack
-        .to_ascii_lowercase()
-        .contains(&needle.to_ascii_lowercase())
+/// Prefer `~/…` for paths under the home directory so headings stay short.
+fn display_repo_path(repo: &Path) -> String {
+    let shown = std::env::home_dir()
+        .and_then(|home| repo.strip_prefix(home).ok().map(Path::to_path_buf))
+        .map(|rest| format!("~/{}", rest.display()))
+        .unwrap_or_else(|| repo.display().to_string());
+    clean_text(&shown)
 }
 
 fn parse_git_date(raw: &str) -> Option<DateTime<Local>> {
-    DateTime::parse_from_rfc3339(raw)
+    DateTime::parse_from_rfc3339(raw.trim())
         .ok()
         .map(|dt| dt.with_timezone(&Local))
-        .or_else(|| {
-            chrono::DateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S %z")
-                .ok()
-                .map(|dt| dt.with_timezone(&Local))
-        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
     #[test]
     fn sole_author_matches() {
-        let ids = vec!["edward@aldreth.com".into()];
-        assert!(involves_you(
-            &ids,
-            "Edward",
-            "edward@aldreth.com",
-            "Edward",
-            "edward@aldreth.com",
-            "",
-        ));
+        let people = [
+            ("Edward", "edward@aldreth.com"),
+            ("Edward", "edward@aldreth.com"),
+        ];
+        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
     }
 
     #[test]
     fn joint_via_coauthored_by() {
-        let ids = vec!["edward@aldreth.com".into(), "Edward".into()];
-        assert!(involves_you(
-            &ids,
-            "Cursor Agent",
-            "cursoragent@cursor.com",
-            "Cursor Agent",
-            "cursoragent@cursor.com",
-            "Edward Andrews-Hodgson <edward@aldreth.com>",
-        ));
-    }
-
-    #[test]
-    fn unrelated_author_excluded() {
-        let ids = vec!["edward@aldreth.com".into()];
-        assert!(!involves_you(
-            &ids,
-            "Someone Else",
-            "else@example.com",
-            "Someone Else",
-            "else@example.com",
-            "Bot <bot@example.com>",
-        ));
+        let people = [
+            ("Cursor Agent", "cursoragent@cursor.com"),
+            ("Cursor Agent", "cursoragent@cursor.com"),
+            parse_person("Edward Andrews-Hodgson <Edward@Aldreth.com>"),
+        ];
+        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
     }
 
     #[test]
     fn joint_via_committer() {
-        let ids = vec!["edward@aldreth.com".into()];
-        assert!(involves_you(
-            &ids,
-            "Cursor Agent",
-            "cursoragent@cursor.com",
-            "Edward",
-            "edward@aldreth.com",
-            "",
-        ));
+        let people = [
+            ("Cursor Agent", "cursoragent@cursor.com"),
+            ("Edward", "edward@aldreth.com"),
+        ];
+        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
+    }
+
+    #[test]
+    fn unrelated_and_partial_matches_are_excluded() {
+        let people = [
+            ("Fred", "fred@aldreth.com"),
+            ("Edwardo", "else@example.com"),
+            parse_person("Bot <bot@example.com>"),
+        ];
+        assert!(!involves_you(&ids(&["ed@aldreth.com", "Edward"]), &people));
+    }
+
+    #[test]
+    fn names_match_whole_and_case_insensitively() {
+        let people = [("Zoë Smith", "z@example.com")];
+        assert!(involves_you(&ids(&["zoë smith"]), &people));
+        assert!(involves_you(&ids(&["Zoë <z@example.com>"]), &people));
+    }
+
+    #[test]
+    fn parses_a_log_line() {
+        let line = [
+            "abc1234",
+            "2026-11-03T10:00:00+00:00",
+            "2026-11-03T11:00:00+00:00",
+            "Someone",
+            "someone@example.com",
+            "Someone",
+            "someone@example.com",
+            "Fix\u{1b}[31m thing",
+            "Edward <edward@aldreth.com>\u{1e}Other <o@example.com>",
+        ]
+        .join("\u{1f}");
+        let (entry, committed) =
+            parse_log_line(&line, &ids(&["edward@aldreth.com"]), "~/x").expect("mine");
+        assert_eq!(entry.hash, "abc1234");
+        assert!(!entry.subject.contains('\u{1b}'));
+        assert!(committed > entry.when);
+        assert!(parse_log_line(&line, &ids(&["nobody@example.com"]), "~/x").is_none());
+        assert!(parse_log_line("garbage", &ids(&["x"]), "~/x").is_none());
     }
 }

@@ -10,11 +10,15 @@ use ratatui::widgets::{BarChart, Block, BorderType, Borders, Clear, Paragraph, W
 
 use crate::app::{App, FocusView, PomodoroPhase};
 use crate::model::profile_url_from_acct;
+use crate::services::mock;
 use crate::theme::Theme;
 use crate::ui::art;
 
+const KEY_HINTS: &str =
+    "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo · a animal";
+
 pub fn draw(frame: &mut Frame, app: &App) {
-    let theme = Theme::for_mode(app.config.theme);
+    let theme = app.theme;
 
     let root = Layout::default()
         .direction(Direction::Vertical)
@@ -269,12 +273,7 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         (None, None) => "☀️".to_string(),
     };
 
-    let lines = if app.loading && app.weather.is_none() {
-        vec![Line::from(Span::styled(
-            "loading weather…",
-            theme.muted_style(),
-        ))]
-    } else if let Some(w) = &app.weather {
+    let lines = if let Some(w) = &app.weather {
         vec![
             Line::from(Span::styled(
                 format!("{} · {}", w.temperature, w.summary),
@@ -286,6 +285,11 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
             )),
             Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
         ]
+    } else if app.config.weather.is_some() && app.loading {
+        vec![Line::from(Span::styled(
+            "loading weather…",
+            theme.muted_style(),
+        ))]
     } else if app.config.weather.is_some() {
         vec![
             Line::from(Span::styled("weather unavailable", theme.muted_style())),
@@ -324,13 +328,6 @@ fn draw_care_panel(
     frame.render_widget(block, area);
 
     match app.care.get(index) {
-        Some(msg) if app.loading && msg.text.is_empty() => {
-            frame.render_widget(
-                Paragraph::new(Span::styled("loading care…", theme.muted_style()))
-                    .style(theme.root_style()),
-                inner,
-            );
-        }
         Some(msg) => {
             let mut y = inner.y;
             let mut height = inner.height;
@@ -383,7 +380,7 @@ fn draw_care_panel(
         None => {
             frame.render_widget(
                 Paragraph::new(Span::styled(
-                    "Hi! You're doing great!!!",
+                    mock::DEFAULT_MESSAGE,
                     Style::default().fg(theme.fg),
                 ))
                 .style(theme.root_style()),
@@ -393,24 +390,11 @@ fn draw_care_panel(
     };
 }
 
-/// Keep `@user@host`; strip legacy `→ url` / `· cached` suffixes and bare URLs.
+/// `@user@host` labels are shown; feed URLs and empty slots get no label line.
 fn friendly_care_label(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let base = trimmed
-        .split(" → ")
-        .next()
-        .unwrap_or(trimmed)
-        .split(" · ")
-        .next()
-        .unwrap_or(trimmed)
-        .trim();
-    if base.is_empty() || base.starts_with("http://") || base.starts_with("https://") {
-        return None;
-    }
-    Some(base.to_string())
+    let label = raw.trim();
+    let hidden = label.is_empty() || label.starts_with("http://") || label.starts_with("https://");
+    (!hidden).then(|| label.to_string())
 }
 
 fn render_acct_label(buf: &mut Buffer, area: Rect, label: &str, theme: Theme) {
@@ -544,12 +528,12 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 }
 
 fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
-    let mut text = app.status.clone();
+    let mut text = KEY_HINTS.to_string();
     if app.pomodoro.active {
         let run = if app.pomodoro.running { "▶" } else { "⏸" };
         text = format!("{text} · {run} {}", app.pomodoro.mmss());
     }
-    if let Some(err) = &app.error {
+    if let Some(err) = &app.warning {
         let short = truncate(err, 40);
         text = format!("{text} · {short}");
     }
@@ -584,7 +568,7 @@ fn draw_focus_view(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 }
 
 fn draw_help_modal(frame: &mut Frame, theme: Theme) {
-    let area = centered_rect(62, 18, frame.area());
+    let area = centered_rect(62, 21, frame.area());
     frame.render_widget(Clear, area);
 
     let lines = vec![
@@ -594,17 +578,20 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         )),
         Line::from(""),
         help_line("q / Esc", "quit (closes help / focus first)", theme),
-        help_line("h", "toggle this help", theme),
+        help_line("Ctrl+C", "quit straight away", theme),
+        help_line("h / ?", "toggle this help", theme),
         help_line("r", "refresh git / care / weather", theme),
         help_line("t", "fullscreen Today commits (copy-friendly)", theme),
         help_line("w", "fullscreen Week commits (copy-friendly)", theme),
         help_line("Tab", "select Today vs Week for scrolling", theme),
         help_line("j / k", "scroll selected commit list", theme),
-        help_line("p", "pomodoro in the say-box", theme),
         help_line("a", "next say-box animal", theme),
+        help_line("p", "pomodoro in the say-box", theme),
+        help_line("s e", "pomodoro start/pause · reset", theme),
+        help_line("u/U b/B", "pomodoro focus ± · break ± minutes", theme),
         Line::from(""),
         Line::from(Span::styled(
-            "Theme: RCT_THEME / --theme (dark|light|auto) — no key toggle.",
+            "Theme: RCT_THEME / --theme (auto|dark|light)",
             theme.muted_style(),
         )),
         Line::from(Span::styled(
@@ -683,14 +670,8 @@ mod tests {
             friendly_care_label("@selfcaregentle@hachyderm.io").as_deref(),
             Some("@selfcaregentle@hachyderm.io")
         );
-        assert_eq!(
-            friendly_care_label(
-                "@GoatsLive@mastodon.social → https://mastodon.social/@GoatsLive.rss"
-            )
-            .as_deref(),
-            Some("@GoatsLive@mastodon.social")
-        );
         assert_eq!(friendly_care_label("https://hachyderm.io/@x.rss"), None);
+        assert_eq!(friendly_care_label(""), None);
         assert_eq!(
             profile_url_from_acct("@selfcare@hachyderm.io").as_deref(),
             Some("https://hachyderm.io/@selfcare")
@@ -705,21 +686,18 @@ mod tests {
             crate::model::CommitEntry {
                 repo: "~/Code/a".into(),
                 hash: "aaaaaaa".into(),
-                author: "me".into(),
                 subject: "one".into(),
                 when: now,
             },
             crate::model::CommitEntry {
                 repo: "~/Code/a".into(),
                 hash: "bbbbbbb".into(),
-                author: "me".into(),
                 subject: "two".into(),
                 when: now,
             },
             crate::model::CommitEntry {
                 repo: "~/Code/b".into(),
                 hash: "ccccccc".into(),
-                author: "me".into(),
                 subject: "three".into(),
                 when: now,
             },

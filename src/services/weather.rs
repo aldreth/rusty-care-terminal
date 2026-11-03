@@ -1,12 +1,8 @@
-use std::time::Duration;
-
-use chrono::Local;
 use serde_json::Value;
 
 use crate::error::{CareError, Result};
-use crate::model::WeatherSnapshot;
-
-const USER_AGENT: &str = concat!("rusty-care-terminal/", env!("CARGO_PKG_VERSION"));
+use crate::model::{WeatherSnapshot, clean_text};
+use crate::services::http::{self, encode_query};
 
 /// Fetch current conditions + today's highs/lows via Open-Meteo (no API key).
 pub fn fetch_weather(location: &str, celsius: bool) -> Result<WeatherSnapshot> {
@@ -21,45 +17,39 @@ pub fn fetch_weather(location: &str, celsius: bool) -> Result<WeatherSnapshot> {
          &temperature_unit={temp_unit}&wind_speed_unit={wind_unit}\
          &timezone=auto&forecast_days=1"
     );
+    let json = http::get_json(&url)
+        .map_err(|e| CareError::Weather(format!("forecast for {name}: {e}")))?;
+    snapshot_from_forecast(&json, name, celsius)
+}
 
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| CareError::Feed(format!("weather client: {e}")))?;
-
-    let json: Value = client
-        .get(&url)
-        .send()
-        .and_then(|r| r.error_for_status())
-        .and_then(|r| r.json())
-        .map_err(|e| CareError::Feed(format!("weather forecast: {e}")))?;
-
+fn snapshot_from_forecast(json: &Value, name: String, celsius: bool) -> Result<WeatherSnapshot> {
     let current = &json["current"];
     let daily = &json["daily"];
-    let temp = current["temperature_2m"].as_f64().unwrap_or(0.0);
-    let code = current["weather_code"].as_u64().unwrap_or(0) as u16;
-    let wind = current["wind_speed_10m"].as_f64().unwrap_or(0.0);
-    let high = daily["temperature_2m_max"]
-        .as_array()
-        .and_then(|a| a.first())
-        .and_then(|v| v.as_f64())
-        .unwrap_or(temp);
-    let low = daily["temperature_2m_min"]
-        .as_array()
-        .and_then(|a| a.first())
-        .and_then(|v| v.as_f64())
-        .unwrap_or(temp);
+    let temp = current["temperature_2m"]
+        .as_f64()
+        .ok_or_else(|| CareError::Weather("forecast had no current temperature".into()))?;
+    let code = current["weather_code"]
+        .as_u64()
+        .and_then(|c| u16::try_from(c).ok());
+    let wind = current["wind_speed_10m"].as_f64();
+    let first_daily = |key: &str| {
+        daily[key]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(Value::as_f64)
+            .unwrap_or(temp)
+    };
+    let high = first_daily("temperature_2m_max");
+    let low = first_daily("temperature_2m_min");
     let unit = if celsius { "°C" } else { "°F" };
     let wind_label = if celsius { "km/h" } else { "mph" };
 
     Ok(WeatherSnapshot {
         place: name,
-        summary: wmo_description(code).to_string(),
+        summary: code.map_or("Mixed skies", wmo_description).to_string(),
         temperature: format!("{temp:.0}{unit}"),
         high_low: format!("H {high:.0}{unit} · L {low:.0}{unit}"),
-        wind: format!("wind {wind:.0} {wind_label}"),
-        fetched_at: Local::now(),
+        wind: wind.map_or_else(String::new, |w| format!("wind {w:.0} {wind_label}")),
     })
 }
 
@@ -71,28 +61,21 @@ fn resolve_location(raw: &str) -> Result<(String, f64, f64)> {
 
     let url = format!(
         "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language=en&format=json",
-        urlencoding_lite(trimmed)
+        encode_query(trimmed)
     );
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| CareError::Feed(format!("geocode client: {e}")))?;
+    let json = http::get_json(&url)
+        .map_err(|e| CareError::Weather(format!("looking up '{trimmed}': {e}")))?;
+    place_from_geocode(&json, trimmed)
+}
 
-    let json: Value = client
-        .get(&url)
-        .send()
-        .and_then(|r| r.error_for_status())
-        .and_then(|r| r.json())
-        .map_err(|e| CareError::Feed(format!("geocode: {e}")))?;
-
+fn place_from_geocode(json: &Value, query: &str) -> Result<(String, f64, f64)> {
     let first = json["results"]
         .as_array()
         .and_then(|a| a.first())
-        .ok_or_else(|| CareError::Feed(format!("no geocode results for '{trimmed}'")))?;
+        .ok_or_else(|| CareError::Weather(format!("no place found for '{query}'")))?;
 
-    let name = first["name"].as_str().unwrap_or(trimmed).to_string();
-    let country = first["country"].as_str().unwrap_or("");
+    let name = clean_text(first["name"].as_str().unwrap_or(query));
+    let country = clean_text(first["country"].as_str().unwrap_or(""));
     let label = if country.is_empty() {
         name
     } else {
@@ -100,10 +83,10 @@ fn resolve_location(raw: &str) -> Result<(String, f64, f64)> {
     };
     let lat = first["latitude"]
         .as_f64()
-        .ok_or_else(|| CareError::Feed("geocode missing latitude".into()))?;
+        .ok_or_else(|| CareError::Weather("place lookup had no latitude".into()))?;
     let lon = first["longitude"]
         .as_f64()
-        .ok_or_else(|| CareError::Feed("geocode missing longitude".into()))?;
+        .ok_or_else(|| CareError::Weather("place lookup had no longitude".into()))?;
     Ok((label, lat, lon))
 }
 
@@ -116,20 +99,6 @@ fn parse_lat_lon(raw: &str) -> Option<(f64, f64)> {
     } else {
         None
     }
-}
-
-fn urlencoding_lite(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
 }
 
 fn wmo_description(code: u16) -> &'static str {
@@ -156,15 +125,48 @@ fn wmo_description(code: u16) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn parses_lat_lon() {
         assert_eq!(parse_lat_lon("51.5,-0.12"), Some((51.5, -0.12)));
         assert!(parse_lat_lon("London").is_none());
+        assert!(parse_lat_lon("91,0").is_none());
     }
 
     #[test]
     fn wmo_clear() {
         assert_eq!(wmo_description(0), "Clear sky");
+    }
+
+    #[test]
+    fn builds_snapshot_from_forecast() {
+        let forecast = json!({
+            "current": { "temperature_2m": 11.6, "weather_code": 61, "wind_speed_10m": 14.2 },
+            "daily": { "temperature_2m_max": [13.1], "temperature_2m_min": [7.4] }
+        });
+        let snap = snapshot_from_forecast(&forecast, "London, United Kingdom".into(), true)
+            .expect("snapshot");
+        assert_eq!(snap.temperature, "12°C");
+        assert_eq!(snap.summary, "Rain");
+        assert_eq!(snap.high_low, "H 13°C · L 7°C");
+        assert_eq!(snap.wind, "wind 14 km/h");
+    }
+
+    #[test]
+    fn missing_temperature_is_an_error_not_zero() {
+        let forecast = json!({ "current": { "weather_code": 0 } });
+        assert!(snapshot_from_forecast(&forecast, "x".into(), true).is_err());
+    }
+
+    #[test]
+    fn geocode_place_is_cleaned() {
+        let reply = json!({ "results": [{
+            "name": "Lon\u{1b}[2Jdon", "country": "United Kingdom",
+            "latitude": 51.5, "longitude": -0.12
+        }]});
+        let (label, _, _) = place_from_geocode(&reply, "London").unwrap();
+        assert!(!label.contains('\u{1b}'));
+        assert!(label.ends_with("United Kingdom"));
     }
 }

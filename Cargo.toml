@@ -2,6 +2,7 @@
 name = "rusty-care-terminal"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89"
 description = "A gentle Rust + ratatui care terminal inspired by tiny-care-terminal, with Mastodon RSS care feeds"
 license = "MIT"
 readme = "README.md"
@@ -9,6 +10,7 @@ repository = "https://github.com/aldreth/rusty-care-terminal"
 homepage = "https://github.com/aldreth/rusty-care-terminal"
 keywords = ["tui", "ratatui", "mastodon", "git", "pomodoro"]
 categories = ["command-line-utilities"]
+include = ["/src", "/fixtures", "/README.md", "/CHANGELOG.md", "/LICENSE"]
 
 [dependencies]
 anyhow = "1"
@@ -19,7 +21,6 @@ feed-rs = "3"
 ratatui = "0.30"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
 serde_json = "1"
-shellexpand = "3"
 thiserror = "2"
 walkdir = "2"
 

@@ -6,41 +6,38 @@ mod services;
 mod theme;
 mod ui;
 
-use std::io::{self, stdout};
+use std::io::{self, IsTerminal, Write};
 use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
+use clap::builder::BoolishValueParser;
+use ratatui::DefaultTerminal;
 
 use app::{App, AppAction};
 use config::{CliOverrides, Config};
-use theme::ThemeMode;
 
+/// Every flag can also be set with the `RCT_*` variable shown in `--help`.
 #[derive(Debug, Parser)]
 #[command(
     name = "rusty-care-terminal",
+    version,
     about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter)."
 )]
 struct Cli {
-    /// Comma-separated repo roots to scan (overrides RCT_REPOS).
+    /// Comma-separated repo roots to scan for your commits.
     #[arg(long, env = "RCT_REPOS")]
     repos: Option<String>,
 
-    /// Max walk depth under each repo root (overrides RCT_REPOS_DEPTH).
+    /// How deep to look for repos under each root (1–5, default 1).
     #[arg(long, env = "RCT_REPOS_DEPTH")]
     repos_depth: Option<usize>,
 
-    /// Comma-separated @user@instance care sources (overrides RCT_BOTS).
+    /// Comma-separated care accounts as user@instance (first one feeds the say-box).
     #[arg(long, env = "RCT_BOTS")]
     bots: Option<String>,
 
-    /// Comma-separated explicit RSS/Atom URLs (overrides RCT_BOT_FEEDS).
+    /// Comma-separated RSS/Atom URLs; these take the first care slots.
     #[arg(long, env = "RCT_BOT_FEEDS")]
     bot_feeds: Option<String>,
 
@@ -48,100 +45,125 @@ struct Cli {
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 
-    /// Your identity for sole/joint authorship (comma-separated name/email).
+    /// Your git identity, comma-separated names/emails (default: each repo's user.email/user.name).
     #[arg(long, env = "RCT_GIT_AUTHOR")]
     git_author: Option<String>,
 
-    /// Auto-refresh interval in minutes (overrides RCT_UPDATE_INTERVAL).
+    /// Auto-refresh interval in minutes (default 20).
     #[arg(long, env = "RCT_UPDATE_INTERVAL")]
     update_interval: Option<u64>,
 
-    /// Weather location: city name or lat,lon (overrides RCT_WEATHER).
+    /// Weather location: city name or lat,lon.
     #[arg(long, env = "RCT_WEATHER")]
     weather: Option<String>,
 
-    /// Use Celsius (default true). Set false / RCT_CELSIUS=false for Fahrenheit.
-    #[arg(long, env = "RCT_CELSIUS")]
+    /// Celsius (default true); `--celsius false` for Fahrenheit.
+    #[arg(long, env = "RCT_CELSIUS", value_parser = BoolishValueParser::new())]
     celsius: Option<bool>,
 
-    /// Pomodoro work minutes (overrides RCT_POMODORO).
+    /// Window title (default "Rusty care terminal"); empty or `false` leaves it alone.
+    #[arg(long, env = "RCT_TERMINAL_TITLE")]
+    terminal_title: Option<String>,
+
+    /// Pomodoro focus minutes (1–120, default 25).
     #[arg(long, env = "RCT_POMODORO")]
     pomodoro: Option<u64>,
 
-    /// Pomodoro break minutes (overrides RCT_BREAK).
+    /// Pomodoro break minutes (1–60, default 5).
     #[arg(long, env = "RCT_BREAK")]
     break_minutes: Option<u64>,
 
-    /// Force mock care messages (skip live Mastodon RSS).
-    #[arg(long, env = "RCT_MOCK", default_value_t = false)]
+    /// Offline care messages instead of live Mastodon feeds.
+    #[arg(long, env = "RCT_MOCK", value_parser = BoolishValueParser::new())]
     mock: bool,
 
-    /// UI theme: auto (default) | dark | light. Overrides RCT_THEME (no key toggle).
+    /// Colour theme: auto (default) | dark | light.
     #[arg(long, env = "RCT_THEME")]
     theme: Option<String>,
 }
 
+impl From<Cli> for CliOverrides {
+    fn from(cli: Cli) -> Self {
+        Self {
+            repos: cli.repos,
+            repos_depth: cli.repos_depth,
+            bots: cli.bots,
+            bot_feeds: cli.bot_feeds,
+            say_box: cli.say_box,
+            git_author: cli.git_author,
+            update_interval: cli.update_interval,
+            weather: cli.weather,
+            celsius: cli.celsius,
+            terminal_title: cli.terminal_title,
+            pomodoro: cli.pomodoro,
+            break_minutes: cli.break_minutes,
+            mock: cli.mock,
+            theme: cli.theme,
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let theme = match cli.theme.as_deref() {
-        Some(raw) => Some(ThemeMode::parse(raw).ok_or_else(|| {
-            anyhow::anyhow!("invalid --theme / RCT_THEME: {raw} (dark|light|auto)")
-        })?),
-        None => None,
-    };
+    let config =
+        Config::load(cli.into(), |key| std::env::var(key).ok()).context("loading config")?;
 
-    let config = Config::load(CliOverrides {
-        repos: cli.repos,
-        repos_depth: cli.repos_depth,
-        bots: cli.bots,
-        bot_feeds: cli.bot_feeds,
-        say_box: cli.say_box,
-        git_author: cli.git_author,
-        update_interval: cli.update_interval,
-        weather: cli.weather,
-        celsius: cli.celsius,
-        pomodoro: cli.pomodoro,
-        break_minutes: cli.break_minutes,
-        mock: cli.mock,
-        theme,
-    })
-    .context("loading config")?;
+    if !io::stdout().is_terminal() || !io::stdin().is_terminal() {
+        anyhow::bail!("rusty-care-terminal needs an interactive terminal");
+    }
 
-    let mut terminal = setup_terminal(&config.terminal_title)?;
+    // Installs a panic hook that restores the terminal before the message prints.
+    let mut terminal = ratatui::try_init().context("setting up the terminal")?;
+    let title = config.terminal_title.clone();
+    if let Some(title) = &title {
+        push_title(title);
+    }
     let result = run(&mut terminal, config);
-    restore_terminal(&mut terminal)?;
+    if title.is_some() {
+        pop_title();
+    }
+    ratatui::restore();
     result
 }
 
-fn run(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    config: Config,
-) -> anyhow::Result<()> {
+fn run(terminal: &mut DefaultTerminal, config: Config) -> anyhow::Result<()> {
     let mut app = App::new(config);
-
     loop {
         terminal.draw(|frame| ui::draw(frame, &app))?;
-        match app.poll_events(Duration::from_millis(200))? {
-            AppAction::Quit => break,
-            AppAction::Continue => {}
+        if app.poll_events(Duration::from_millis(200))? == AppAction::Quit {
+            return Ok(());
         }
     }
-    Ok(())
 }
 
-fn setup_terminal(title: &str) -> anyhow::Result<Terminal<CrosstermBackend<io::Stdout>>> {
-    enable_raw_mode()?;
-    let mut out = stdout();
-    // No mouse capture — lets the terminal select/copy text (hashes, etc.).
-    execute!(out, EnterAlternateScreen)?;
-    let _ = execute!(out, crossterm::terminal::SetTitle(title));
-    let backend = CrosstermBackend::new(out);
-    Terminal::new(backend).context("creating terminal")
+/// Saves the current title on the xterm title stack, then sets ours.
+/// Terminals without a title stack ignore the save/restore sequences.
+fn push_title(title: &str) {
+    let mut out = io::stdout();
+    let _ = write!(out, "\x1b[22;0t");
+    let _ = crossterm::execute!(out, crossterm::terminal::SetTitle(title));
 }
 
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> anyhow::Result<()> {
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-    Ok(())
+fn pop_title() {
+    let mut out = io::stdout();
+    let _ = write!(out, "\x1b[23;0t");
+    let _ = out.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn boolish_flags_accept_common_spellings() {
+        let cli = Cli::try_parse_from(["rct", "--celsius", "no", "--mock"]).unwrap();
+        assert_eq!(cli.celsius, Some(false));
+        assert!(cli.mock);
+    }
 }

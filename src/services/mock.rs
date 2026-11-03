@@ -1,34 +1,28 @@
-use chrono::Local;
-
 use crate::config::Config;
-use crate::model::CareMessage;
+use crate::model::{CARE_SLOTS, CareMessage};
+
+pub const DEFAULT_MESSAGE: &str = "Hi! You're doing great!!!";
 
 const FALLBACK: &[&str] = &[
-    "Hi! You're doing great!!!",
+    DEFAULT_MESSAGE,
     "Drink some water. Your future self says thanks.",
     "Stretch those shoulders — tiny pauses count.",
     "One commit is still a win. Celebrate softly.",
     "Be gentle with yourself today.",
 ];
 
-/// Build mock care messages for the three panels (RSS fetch lands in Milestone 2).
-pub fn mock_care_messages(cfg: &Config) -> Vec<CareMessage> {
-    let sources = cfg.care_sources();
-    let now = Local::now();
+/// Offline kindness for care slot `index`, labelled with the configured account (if any).
+pub fn fallback_message(cfg: &Config, index: usize) -> CareMessage {
+    CareMessage {
+        source_label: cfg
+            .care_sources()
+            .get(index)
+            .map(|s| s.label())
+            .unwrap_or_default(),
+        text: FALLBACK[index % FALLBACK.len()].to_string(),
+    }
+}
 
-    (0..3)
-        .map(|i| {
-            let label = sources
-                .get(i)
-                .map(|s| s.label())
-                .unwrap_or_else(|| format!("care-{}", i + 1));
-            let text = FALLBACK[i % FALLBACK.len()].to_string();
-            CareMessage {
-                source_label: label,
-                text,
-                fetched_at: now,
-                from_mock: true,
-            }
-        })
-        .collect()
+pub fn mock_care_messages(cfg: &Config) -> Vec<CareMessage> {
+    (0..CARE_SLOTS).map(|i| fallback_message(cfg, i)).collect()
 }

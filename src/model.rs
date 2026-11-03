@@ -1,5 +1,8 @@
 use chrono::{DateTime, Local};
 
+/// Number of care slots on screen: the say-box plus two side panels.
+pub const CARE_SLOTS: usize = 3;
+
 /// Say-box creature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Animal {
@@ -54,7 +57,7 @@ impl CareSource {
         }
     }
 
-    /// Intended RSS endpoint for this source (Milestone 2 will fetch it).
+    /// RSS endpoint for this source; `None` when an account is not a valid `user@host`.
     pub fn rss_url(&self) -> Option<String> {
         match self {
             CareSource::FeedUrl(url) => Some(url.clone()),
@@ -73,13 +76,28 @@ impl CareSource {
     }
 }
 
-fn split_acct(acct: &str) -> Option<(&str, &str)> {
+/// Splits `user@host`, rejecting anything that could escape the URL path or a
+/// terminal hyperlink (only Mastodon username and hostname characters pass).
+pub fn split_acct(acct: &str) -> Option<(&str, &str)> {
     let (user, host) = acct.split_once('@')?;
-    if user.is_empty() || host.is_empty() {
-        None
-    } else {
-        Some((user, host))
-    }
+    let user_ok = !user.is_empty()
+        && user
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    let host_ok = !host.is_empty()
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'));
+    (user_ok && host_ok).then_some((user, host))
+}
+
+/// Drops control characters (escape sequences included) and collapses whitespace,
+/// so remote text can never drive the terminal.
+pub fn clean_text(raw: &str) -> String {
+    raw.split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// `@user@host` / `user@host` → `https://{host}/@{user}`.
@@ -89,22 +107,17 @@ pub fn profile_url_from_acct(acct_or_label: &str) -> Option<String> {
     Some(format!("https://{host}/@{user}"))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CareMessage {
+    /// `@user@host`, or empty when the slot has no configured account.
     pub source_label: String,
     pub text: String,
-    #[allow(dead_code)]
-    pub fetched_at: DateTime<Local>,
-    #[allow(dead_code)]
-    pub from_mock: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CommitEntry {
     pub repo: String,
     pub hash: String,
-    #[allow(dead_code)]
-    pub author: String,
     pub subject: String,
     pub when: DateTime<Local>,
 }
@@ -122,8 +135,6 @@ pub struct WeatherSnapshot {
     pub temperature: String,
     pub high_low: String,
     pub wind: String,
-    #[allow(dead_code)]
-    pub fetched_at: DateTime<Local>,
 }
 
 impl CommitStats {
@@ -164,6 +175,29 @@ mod tests {
         assert_eq!(
             profile_url_from_acct("@selfcare@hachyderm.io").as_deref(),
             Some("https://hachyderm.io/@selfcare")
+        );
+    }
+
+    #[test]
+    fn rejects_accts_that_could_inject() {
+        for bad in [
+            "tinycarebot",
+            "user@host/evil",
+            "user@host?x=1",
+            "us er@host",
+            "user@\u{1b}]8;;x",
+            "@host",
+        ] {
+            assert_eq!(CareSource::parse(bad).rss_url(), None, "{bad}");
+            assert_eq!(profile_url_from_acct(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn clean_text_strips_escapes_and_collapses_space() {
+        assert_eq!(
+            clean_text("hi\u{1b}[2J  there\n\tfriend\u{7}"),
+            "hi [2J there friend"
         );
     }
 

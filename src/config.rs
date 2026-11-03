@@ -1,4 +1,3 @@
-use std::env;
 use std::path::PathBuf;
 
 use crate::error::{CareError, Result};
@@ -11,6 +10,9 @@ const DEFAULT_BOTS: &[&str] = &[
     // GoatsLive has a lively public RSS; 3goodthings group feed is often empty.
     "GoatsLive@mastodon.social",
 ];
+
+pub const MAX_POMODORO_MINS: u64 = 120;
+pub const MAX_BREAK_MINS: u64 = 60;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -26,7 +28,8 @@ pub struct Config {
     pub weather: Option<String>,
     pub celsius: bool,
     pub update_interval_mins: u64,
-    pub terminal_title: String,
+    /// `None` leaves the terminal's title alone.
+    pub terminal_title: Option<String>,
     pub pomodoro: u64,
     pub break_minutes: u64,
     pub mock: bool,
@@ -46,7 +49,7 @@ impl Default for Config {
             weather: None,
             celsius: true,
             update_interval_mins: 20,
-            terminal_title: "Rusty care terminal".into(),
+            terminal_title: Some("Rusty care terminal".into()),
             pomodoro: 25,
             break_minutes: 5,
             mock: false,
@@ -55,77 +58,7 @@ impl Default for Config {
     }
 }
 
-impl Config {
-    /// Load from environment (`RCT_*`, with legacy `TTC_*` aliases) and CLI overrides.
-    pub fn load(cli: CliOverrides) -> Result<Self> {
-        let mut cfg = Config::default();
-        merge_env(&mut cfg)?;
-
-        if let Some(repos) = cli.repos {
-            cfg.repos = expand_repos(&split_csv(&repos));
-        }
-        if let Some(depth) = cli.repos_depth {
-            cfg.repos_depth = depth.clamp(1, 5);
-        }
-        if let Some(bots) = cli.bots {
-            cfg.bots = split_csv(&bots)
-                .iter()
-                .map(|b| CareSource::parse(b))
-                .collect();
-        }
-        if let Some(feeds) = cli.bot_feeds {
-            cfg.bot_feeds = split_csv(&feeds);
-        }
-        if let Some(say_box) = cli.say_box {
-            cfg.say_box = parse_say_box(&say_box)?;
-        }
-        if let Some(author) = cli.git_author {
-            cfg.git_author = Some(author);
-        }
-        if let Some(mins) = cli.update_interval {
-            cfg.update_interval_mins = mins.max(1);
-        }
-        if let Some(weather) = cli.weather {
-            cfg.weather = Some(weather);
-        }
-        if let Some(celsius) = cli.celsius {
-            cfg.celsius = celsius;
-        }
-        if let Some(pomodoro) = cli.pomodoro {
-            cfg.pomodoro = pomodoro.max(1);
-        }
-        if let Some(break_minutes) = cli.break_minutes {
-            cfg.break_minutes = break_minutes.max(1);
-        }
-        if cli.mock {
-            cfg.mock = true;
-        }
-        if let Some(theme) = cli.theme {
-            cfg.theme = theme;
-        }
-
-        // Explicit feed URLs win / pad sources when provided.
-        if !cfg.bot_feeds.is_empty() {
-            let mut sources: Vec<CareSource> = cfg
-                .bot_feeds
-                .iter()
-                .map(|u| CareSource::FeedUrl(u.clone()))
-                .collect();
-            if sources.len() < cfg.bots.len() {
-                sources.extend(cfg.bots.iter().skip(sources.len()).cloned());
-            }
-            cfg.bots = sources;
-        }
-
-        Ok(cfg)
-    }
-
-    pub fn care_sources(&self) -> &[CareSource] {
-        &self.bots
-    }
-}
-
-/// Values from clap that override env / defaults.
+/// Values from clap: CLI flags, or their `RCT_*` env vars (clap reads those).
 #[derive(Debug, Default)]
 pub struct CliOverrides {
     pub repos: Option<String>,
@@ -137,72 +70,132 @@ pub struct CliOverrides {
     pub update_interval: Option<u64>,
     pub weather: Option<String>,
     pub celsius: Option<bool>,
+    pub terminal_title: Option<String>,
     pub pomodoro: Option<u64>,
     pub break_minutes: Option<u64>,
     pub mock: bool,
-    pub theme: Option<ThemeMode>,
+    pub theme: Option<String>,
 }
 
-fn merge_env(cfg: &mut Config) -> Result<()> {
-    // Prefer RCT_*; accept legacy TTC_* as aliases.
-    if let Some(v) = env_first(&["RCT_BOTS", "TTC_BOTS"]) {
-        cfg.bots = split_csv(&v).iter().map(|b| CareSource::parse(b)).collect();
+impl Config {
+    /// Precedence: CLI flag / `RCT_*` (via clap) > legacy `TTC_*` from `env` > defaults.
+    pub fn load(cli: CliOverrides, env: impl Fn(&str) -> Option<String>) -> Result<Self> {
+        let mut cfg = Config::default();
+        cfg.apply_legacy_env(&env)?;
+        cfg.apply_cli(cli)?;
+        cfg.normalize();
+        Ok(cfg)
     }
-    if let Some(v) = env_first(&["RCT_BOT_FEEDS"]) {
-        cfg.bot_feeds = split_csv(&v);
-    }
-    if let Some(v) = env_first(&["RCT_SAY_BOX", "TTC_SAY_BOX"]) {
-        cfg.say_box = parse_say_box(&v)?;
-    }
-    if let Some(v) = env_first(&["RCT_REPOS", "TTC_REPOS"]) {
-        cfg.repos = expand_repos(&split_csv(&v));
-    }
-    if let Some(v) = env_first(&["RCT_REPOS_DEPTH", "TTC_REPOS_DEPTH"]) {
-        cfg.repos_depth = v
-            .parse::<usize>()
-            .map_err(|_| CareError::Config(format!("invalid repos_depth: {v}")))?
-            .clamp(1, 5);
-    }
-    if let Some(v) = env_first(&["RCT_GIT_AUTHOR", "TTC_GIT_AUTHOR"]) {
-        cfg.git_author = Some(v);
-    }
-    if let Some(v) = env_first(&["RCT_WEATHER", "TTC_WEATHER"]) {
-        cfg.weather = Some(v);
-    }
-    if let Some(v) = env_first(&["RCT_CELSIUS", "TTC_CELSIUS"]) {
-        cfg.celsius = parse_bool(&v)?;
-    }
-    if let Some(v) = env_first(&["RCT_UPDATE_INTERVAL", "TTC_UPDATE_INTERVAL"]) {
-        cfg.update_interval_mins = v
-            .parse::<u64>()
-            .map_err(|_| CareError::Config(format!("invalid update_interval: {v}")))?
-            .max(1);
-    }
-    if let Some(v) = env_first(&["RCT_TERMINAL_TITLE", "TTC_TERMINAL_TITLE"]) {
-        cfg.terminal_title = v;
-    }
-    if let Some(v) = env_first(&["RCT_POMODORO", "TTC_POMODORO"]) {
-        cfg.pomodoro = v
-            .parse()
-            .map_err(|_| CareError::Config(format!("invalid pomodoro: {v}")))?;
-    }
-    if let Some(v) = env_first(&["RCT_BREAK", "TTC_BREAK"]) {
-        cfg.break_minutes = v
-            .parse()
-            .map_err(|_| CareError::Config(format!("invalid break_minutes: {v}")))?;
-    }
-    if let Some(v) = env_first(&["RCT_MOCK"]) {
-        cfg.mock = parse_bool(&v)?;
-    }
-    if let Some(v) = env_first(&["RCT_THEME"]) {
-        cfg.theme = ThemeMode::parse(&v)
-            .ok_or_else(|| CareError::Config(format!("invalid theme: {v} (dark|light|auto)")))?;
-    }
-    Ok(())
-}
 
-fn env_first(keys: &[&str]) -> Option<String> {
-    keys.iter().find_map(|k| env::var(k).ok())
+    pub fn care_sources(&self) -> &[CareSource] {
+        &self.bots
+    }
+
+    /// Original tiny-care-terminal variables. Values that only made sense there
+    /// (Twitter handles, cowsay/ANSI art) are ignored rather than fatal.
+    fn apply_legacy_env(&mut self, env: &impl Fn(&str) -> Option<String>) -> Result<()> {
+        if let Some(v) = env("TTC_BOTS")
+            && let Ok(bots) = parse_bots(&v)
+        {
+            self.bots = bots;
+        }
+        if let Some(v) = env("TTC_SAY_BOX")
+            && let Ok(animal) = parse_say_box(&v)
+        {
+            self.say_box = animal;
+        }
+        if let Some(v) = env("TTC_REPOS") {
+            self.repos = parse_repos(&v);
+        }
+        if let Some(v) = env("TTC_REPOS_DEPTH") {
+            self.repos_depth = parse_num("TTC_REPOS_DEPTH", &v)?;
+        }
+        if let Some(v) = env("TTC_WEATHER") {
+            self.weather = non_empty(v);
+        }
+        if let Some(v) = env("TTC_CELSIUS") {
+            self.celsius = parse_bool("TTC_CELSIUS", &v)?;
+        }
+        if let Some(v) = env("TTC_UPDATE_INTERVAL") {
+            self.update_interval_mins = parse_num("TTC_UPDATE_INTERVAL", &v)?;
+        }
+        if let Some(v) = env("TTC_TERMINAL_TITLE") {
+            self.terminal_title = parse_title(&v);
+        }
+        if let Some(v) = env("TTC_POMODORO") {
+            self.pomodoro = parse_num("TTC_POMODORO", &v)?;
+        }
+        if let Some(v) = env("TTC_BREAK") {
+            self.break_minutes = parse_num("TTC_BREAK", &v)?;
+        }
+        Ok(())
+    }
+
+    fn apply_cli(&mut self, cli: CliOverrides) -> Result<()> {
+        if let Some(repos) = cli.repos {
+            self.repos = parse_repos(&repos);
+        }
+        if let Some(depth) = cli.repos_depth {
+            self.repos_depth = depth;
+        }
+        if let Some(bots) = cli.bots {
+            self.bots = parse_bots(&bots)?;
+        }
+        if let Some(feeds) = cli.bot_feeds {
+            self.bot_feeds = split_csv(&feeds);
+        }
+        if let Some(say_box) = cli.say_box {
+            self.say_box = parse_say_box(&say_box)?;
+        }
+        if let Some(author) = cli.git_author {
+            self.git_author = non_empty(author);
+        }
+        if let Some(mins) = cli.update_interval {
+            self.update_interval_mins = mins;
+        }
+        if let Some(weather) = cli.weather {
+            self.weather = non_empty(weather);
+        }
+        if let Some(celsius) = cli.celsius {
+            self.celsius = celsius;
+        }
+        if let Some(title) = cli.terminal_title {
+            self.terminal_title = parse_title(&title);
+        }
+        if let Some(pomodoro) = cli.pomodoro {
+            self.pomodoro = pomodoro;
+        }
+        if let Some(break_minutes) = cli.break_minutes {
+            self.break_minutes = break_minutes;
+        }
+        self.mock |= cli.mock;
+        if let Some(theme) = cli.theme {
+            self.theme = ThemeMode::parse(&theme).ok_or_else(|| {
+                CareError::Config(format!("invalid theme: {theme} (auto|dark|light)"))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn normalize(&mut self) {
+        self.repos_depth = self.repos_depth.clamp(1, 5);
+        self.update_interval_mins = self.update_interval_mins.clamp(1, 24 * 60);
+        self.pomodoro = self.pomodoro.clamp(1, MAX_POMODORO_MINS);
+        self.break_minutes = self.break_minutes.clamp(1, MAX_BREAK_MINS);
+
+        // Explicit feed URLs take the first slots; accounts fill any that remain.
+        if !self.bot_feeds.is_empty() {
+            let mut sources: Vec<CareSource> = self
+                .bot_feeds
+                .iter()
+                .map(|u| CareSource::FeedUrl(u.clone()))
+                .collect();
+            if sources.len() < self.bots.len() {
+                sources.extend(self.bots.iter().skip(sources.len()).cloned());
+            }
+            self.bots = sources;
+        }
+    }
 }
 
 fn split_csv(raw: &str) -> Vec<String> {
@@ -213,11 +206,37 @@ fn split_csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn expand_repos(raw: &[String]) -> Vec<PathBuf> {
-    raw.iter()
-        .map(|p| {
-            let expanded = shellexpand::tilde(p).into_owned();
-            PathBuf::from(expanded)
+fn non_empty(v: String) -> Option<String> {
+    let trimmed = v.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn parse_repos(raw: &str) -> Vec<PathBuf> {
+    split_csv(raw).iter().map(|p| expand_tilde(p)).collect()
+}
+
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(home) = std::env::home_dir() {
+        if path == "~" {
+            return home;
+        }
+        if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(path)
+}
+
+fn parse_bots(raw: &str) -> Result<Vec<CareSource>> {
+    split_csv(raw)
+        .iter()
+        .map(|b| {
+            let source = CareSource::parse(b);
+            source.rss_url().map(|_| source).ok_or_else(|| {
+                CareError::Config(format!(
+                    "invalid care account: {b} (expected user@instance or an https:// feed URL)"
+                ))
+            })
         })
         .collect()
 }
@@ -233,23 +252,47 @@ fn parse_say_box(v: &str) -> Result<Option<Animal>> {
     })
 }
 
-fn parse_bool(v: &str) -> Result<bool> {
+/// Empty or `false` (the original tiny-care opt-out) leaves the title untouched.
+fn parse_title(v: &str) -> Option<String> {
+    let title = crate::model::clean_text(v);
+    (!title.is_empty() && !title.eq_ignore_ascii_case("false")).then_some(title)
+}
+
+fn parse_num<T: std::str::FromStr>(key: &str, v: &str) -> Result<T> {
+    v.trim()
+        .parse()
+        .map_err(|_| CareError::Config(format!("{key}: expected a whole number, got {v:?}")))
+}
+
+fn parse_bool(key: &str, v: &str) -> Result<bool> {
     match v.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
-        other => Err(CareError::Config(format!("invalid bool: {other}"))),
+        _ => Err(CareError::Config(format!(
+            "{key}: expected true/false, got {v:?}"
+        ))),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    fn load(cli: CliOverrides, env: &[(&str, &str)]) -> Result<Config> {
+        let env: HashMap<String, String> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::load(cli, |k| env.get(k).cloned())
+    }
 
     #[test]
     fn default_bots_have_rss_urls() {
-        let cfg = Config::default();
+        let cfg = load(CliOverrides::default(), &[]).unwrap();
         assert_eq!(cfg.bots.len(), 3);
         assert!(cfg.bots[0].rss_url().unwrap().contains("selfcare.rss"));
+        assert_eq!(cfg.terminal_title.as_deref(), Some("Rusty care terminal"));
     }
 
     #[test]
@@ -257,5 +300,97 @@ mod tests {
         assert_eq!(parse_say_box("Cat").unwrap(), Some(Animal::Cat));
         assert_eq!(parse_say_box("RANDOM").unwrap(), None);
         assert!(parse_say_box("~/art/parrot.png").is_err());
+    }
+
+    #[test]
+    fn cli_and_rct_beat_legacy_env() {
+        let cli = CliOverrides {
+            weather: Some("Leeds".into()),
+            pomodoro: Some(50),
+            ..Default::default()
+        };
+        let cfg = load(
+            cli,
+            &[
+                ("TTC_WEATHER", "Paris"),
+                ("TTC_POMODORO", "10"),
+                ("TTC_BREAK", "7"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(cfg.weather.as_deref(), Some("Leeds"));
+        assert_eq!(cfg.pomodoro, 50);
+        assert_eq!(cfg.break_minutes, 7);
+    }
+
+    #[test]
+    fn legacy_values_from_the_original_app_are_ignored_not_fatal() {
+        let cfg = load(
+            CliOverrides::default(),
+            &[
+                ("TTC_BOTS", "tinycarebot,selfcare_bot,magicrealismbot"),
+                ("TTC_SAY_BOX", "stegosaurus.cow"),
+                ("TTC_TERMINAL_TITLE", "false"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(cfg.bots, Config::default().bots);
+        assert_eq!(cfg.say_box, Some(Animal::Parrot));
+        assert_eq!(cfg.terminal_title, None);
+    }
+
+    #[test]
+    fn explicit_bad_values_are_errors() {
+        for cli in [
+            CliOverrides {
+                bots: Some("tinycarebot".into()),
+                ..Default::default()
+            },
+            CliOverrides {
+                say_box: Some("yeoman".into()),
+                ..Default::default()
+            },
+            CliOverrides {
+                theme: Some("solarized".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(load(cli, &[]).is_err());
+        }
+        assert!(load(CliOverrides::default(), &[("TTC_CELSIUS", "maybe")]).is_err());
+    }
+
+    #[test]
+    fn values_are_clamped_the_same_from_every_source() {
+        let cfg = load(
+            CliOverrides {
+                pomodoro: Some(0),
+                repos_depth: Some(99),
+                ..Default::default()
+            },
+            &[("TTC_BREAK", "500"), ("TTC_UPDATE_INTERVAL", "0")],
+        )
+        .unwrap();
+        assert_eq!(cfg.pomodoro, 1);
+        assert_eq!(cfg.repos_depth, 5);
+        assert_eq!(cfg.break_minutes, MAX_BREAK_MINS);
+        assert_eq!(cfg.update_interval_mins, 1);
+    }
+
+    #[test]
+    fn feed_urls_take_the_first_slots() {
+        let cfg = load(
+            CliOverrides {
+                bot_feeds: Some("https://example.com/a.rss".into()),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.bots[0],
+            CareSource::FeedUrl("https://example.com/a.rss".into())
+        );
+        assert_eq!(cfg.bots[1], Config::default().bots[1]);
     }
 }

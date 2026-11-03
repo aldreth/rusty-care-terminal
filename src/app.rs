@@ -1,11 +1,13 @@
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
 use std::time::{Duration, Instant};
 
-use chrono::Local;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::config::Config;
+use crate::config::{Config, MAX_BREAK_MINS, MAX_POMODORO_MINS};
 use crate::model::{Animal, CareMessage, CommitStats, WeatherSnapshot};
-use crate::services::{git, mastodon, weather};
+use crate::services::{self, Snapshot, mock};
+use crate::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
@@ -63,15 +65,12 @@ impl PomodoroState {
     }
 
     fn tick(&mut self) {
-        if !self.active || !self.running {
-            self.last_tick = Instant::now();
-            return;
-        }
         let elapsed = self.last_tick.elapsed();
         self.last_tick = Instant::now();
+        if !self.active || !self.running {
+            return;
+        }
         if elapsed >= self.remaining {
-            self.remaining = Duration::ZERO;
-            self.running = false;
             self.phase = match self.phase {
                 PomodoroPhase::Work => PomodoroPhase::Break,
                 PomodoroPhase::Break => PomodoroPhase::Work,
@@ -79,6 +78,17 @@ impl PomodoroState {
             self.reset_phase();
         } else {
             self.remaining -= elapsed;
+        }
+    }
+
+    fn adjust(&mut self, phase: PomodoroPhase, delta: i64) {
+        let (mins, max) = match phase {
+            PomodoroPhase::Work => (&mut self.work_mins, MAX_POMODORO_MINS),
+            PomodoroPhase::Break => (&mut self.break_mins, MAX_BREAK_MINS),
+        };
+        *mins = mins.saturating_add_signed(delta).clamp(1, max);
+        if self.phase == phase && !self.running {
+            self.reset_phase();
         }
     }
 
@@ -90,15 +100,14 @@ impl PomodoroState {
 
 pub struct App {
     pub config: Config,
+    pub theme: Theme,
     pub commits: CommitStats,
     pub care: Vec<CareMessage>,
     pub weather: Option<WeatherSnapshot>,
-    pub status: String,
-    pub last_refresh: Instant,
-    pub last_refresh_at: chrono::DateTime<Local>,
+    /// A refresh is in flight (first load included).
     pub loading: bool,
-    pub error: Option<String>,
-    pub warnings: Vec<String>,
+    /// First problem from the last refresh, shown in the footer.
+    pub warning: Option<String>,
     pub pomodoro: PomodoroState,
     pub scroll_today: u16,
     pub scroll_week: u16,
@@ -108,32 +117,32 @@ pub struct App {
     pub focus: FocusView,
     /// Say-box animal; `None` = RANDOM until the user presses `a`.
     pub animal: Option<Animal>,
+    last_refresh: Instant,
+    pending: Option<Receiver<Snapshot>>,
 }
 
 impl App {
+    /// Builds the app and starts the first refresh in the background.
     pub fn new(config: Config) -> Self {
-        let pomodoro = PomodoroState::new(config.pomodoro, config.break_minutes);
-        let animal = config.say_box;
         let mut app = Self {
+            theme: Theme::for_mode(config.theme),
+            pomodoro: PomodoroState::new(config.pomodoro, config.break_minutes),
+            animal: config.say_box,
             config,
             commits: CommitStats::default(),
             care: Vec::new(),
             weather: None,
-            status: "starting…".into(),
-            last_refresh: Instant::now(),
-            last_refresh_at: Local::now(),
-            loading: true,
-            error: None,
-            warnings: Vec::new(),
-            pomodoro,
+            loading: false,
+            warning: None,
             scroll_today: 0,
             scroll_week: 0,
             scroll_today_focus: true,
             show_help: false,
             focus: FocusView::None,
-            animal,
+            last_refresh: Instant::now(),
+            pending: None,
         };
-        app.refresh();
+        app.start_refresh();
         app
     }
 
@@ -141,7 +150,7 @@ impl App {
         self.care
             .first()
             .map(|m| m.text.as_str())
-            .unwrap_or("Hi! You're doing great!!!")
+            .unwrap_or(mock::DEFAULT_MESSAGE)
     }
 
     pub fn current_animal(&self) -> Animal {
@@ -149,179 +158,247 @@ impl App {
             .unwrap_or_else(|| Animal::for_message(self.say_box_message()))
     }
 
-    pub fn refresh(&mut self) {
-        self.loading = true;
-        self.status = "refreshing…".into();
-        self.warnings.clear();
+    /// Kicks off git / care / weather on a worker thread; ignored if one is running.
+    pub fn start_refresh(&mut self) {
+        if self.pending.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let config = self.config.clone();
+        let spawned = thread::Builder::new()
+            .name("refresh".into())
+            .spawn(move || {
+                let _ = tx.send(services::fetch_all(&config));
+            });
+        match spawned {
+            Ok(_) => {
+                self.pending = Some(rx);
+                self.loading = true;
+            }
+            Err(e) => self.warning = Some(format!("could not start refresh: {e}")),
+        }
+    }
 
-        let (stats, git_warnings) = git::collect_commits(
-            &self.config.repos,
-            self.config.repos_depth,
-            self.config.git_author.as_deref(),
-        );
-        self.commits = stats;
-        self.warnings.extend(git_warnings);
-
-        let (care, care_warnings) = mastodon::fetch_care_messages(&self.config);
-        self.care = care;
-        self.warnings.extend(care_warnings);
-
-        if let Some(loc) = self.config.weather.clone() {
-            match weather::fetch_weather(&loc, self.config.celsius) {
-                Ok(snap) => self.weather = Some(snap),
-                Err(e) => {
-                    self.warnings.push(format!("weather: {e}"));
-                }
+    /// Applies a finished refresh, if there is one. Never blocks.
+    pub fn poll_refresh(&mut self) {
+        let Some(rx) = &self.pending else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(snapshot) => self.apply(snapshot),
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                self.warning = Some("refresh failed unexpectedly".into());
             }
         }
-
-        // Keep the footer short: shortcuts + a single warning if something failed.
-        self.status =
-            "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo · a animal"
-                .into();
-        self.error = self.warnings.first().cloned();
+        self.pending = None;
+        self.loading = false;
         self.last_refresh = Instant::now();
-        self.last_refresh_at = Local::now();
+    }
+
+    fn apply(&mut self, snapshot: Snapshot) {
+        self.commits = snapshot.commits;
+        if !snapshot.care.is_empty() {
+            self.care = snapshot.care;
+        }
+        match snapshot.weather {
+            Some(Ok(weather)) => self.weather = Some(weather),
+            // Keep the last good reading through a transient failure.
+            Some(Err(_)) => {}
+            None => self.weather = None,
+        }
+        self.warning = snapshot.warnings.into_iter().next();
         self.scroll_today = 0;
         self.scroll_week = 0;
-        self.loading = false;
     }
 
-    pub fn should_auto_refresh(&self) -> bool {
+    fn should_auto_refresh(&self) -> bool {
         let interval = Duration::from_secs(self.config.update_interval_mins.saturating_mul(60));
-        self.last_refresh.elapsed() >= interval
+        self.pending.is_none() && self.last_refresh.elapsed() >= interval
     }
 
-    pub fn handle_event(&mut self, ev: Event) -> AppAction {
-        if let Event::Key(key) = ev {
-            if key.kind != KeyEventKind::Press {
-                return AppAction::Continue;
-            }
-            match key.code {
-                KeyCode::Char('q') => {
-                    if self.show_help {
-                        self.show_help = false;
-                    } else if self.focus != FocusView::None {
-                        self.focus = FocusView::None;
-                    } else {
-                        return AppAction::Quit;
-                    }
-                }
-                KeyCode::Esc => {
-                    if self.show_help {
-                        self.show_help = false;
-                    } else if self.focus != FocusView::None {
-                        self.focus = FocusView::None;
-                    } else {
-                        return AppAction::Quit;
-                    }
-                }
-                KeyCode::Char('h') => {
-                    self.show_help = !self.show_help;
-                }
-                KeyCode::Char('t') => {
-                    // Toggle Today commits fullscreen (for multi-line copy).
+    pub fn handle_key(&mut self, key: KeyEvent) -> AppAction {
+        if key.kind != KeyEventKind::Press {
+            return AppAction::Continue;
+        }
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return if matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
+                AppAction::Quit
+            } else {
+                AppAction::Continue
+            };
+        }
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                if self.show_help {
                     self.show_help = false;
-                    self.focus = match self.focus {
-                        FocusView::Today => FocusView::None,
-                        _ => FocusView::Today,
-                    };
-                    self.scroll_today_focus = true;
-                }
-                KeyCode::Char('w') => {
-                    // Toggle Week commits fullscreen (for multi-line copy).
-                    self.show_help = false;
-                    self.focus = match self.focus {
-                        FocusView::Week => FocusView::None,
-                        _ => FocusView::Week,
-                    };
-                    self.scroll_today_focus = false;
-                }
-                KeyCode::Char('r') => {
-                    self.show_help = false;
+                } else if self.focus != FocusView::None {
                     self.focus = FocusView::None;
-                    self.refresh();
+                } else {
+                    return AppAction::Quit;
                 }
-                KeyCode::Tab => {
-                    self.scroll_today_focus = !self.scroll_today_focus;
-                }
-                KeyCode::Char('a') => {
-                    self.animal = Some(self.current_animal().next());
-                }
-                KeyCode::Char('j') | KeyCode::Down => {
-                    if self.scroll_today_focus {
-                        self.scroll_today = self.scroll_today.saturating_add(1);
-                    } else {
-                        self.scroll_week = self.scroll_week.saturating_add(1);
-                    }
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    if self.scroll_today_focus {
-                        self.scroll_today = self.scroll_today.saturating_sub(1);
-                    } else {
-                        self.scroll_week = self.scroll_week.saturating_sub(1);
-                    }
-                }
-                KeyCode::Char('p') => {
-                    self.pomodoro.active = !self.pomodoro.active;
-                    if self.pomodoro.active {
-                        self.pomodoro.phase = PomodoroPhase::Work;
-                        self.pomodoro.reset_phase();
-                    } else {
-                        self.pomodoro.running = false;
-                    }
-                }
-                KeyCode::Char('s') if self.pomodoro.active => {
-                    self.pomodoro.running = !self.pomodoro.running;
-                    self.pomodoro.last_tick = Instant::now();
-                }
-                KeyCode::Char('e') if self.pomodoro.active => {
-                    self.pomodoro.phase = PomodoroPhase::Work;
-                    self.pomodoro.reset_phase();
-                }
-                KeyCode::Char('u') if self.pomodoro.active => {
-                    self.pomodoro.work_mins = self.pomodoro.work_mins.saturating_add(1).min(120);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running
-                    {
-                        self.pomodoro.reset_phase();
-                    }
-                }
-                KeyCode::Char('U') if self.pomodoro.active => {
-                    self.pomodoro.work_mins = self.pomodoro.work_mins.saturating_sub(1).max(1);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Work) && !self.pomodoro.running
-                    {
-                        self.pomodoro.reset_phase();
-                    }
-                }
-                KeyCode::Char('b') if self.pomodoro.active => {
-                    self.pomodoro.break_mins = self.pomodoro.break_mins.saturating_add(1).min(60);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Break) && !self.pomodoro.running
-                    {
-                        self.pomodoro.reset_phase();
-                    }
-                }
-                KeyCode::Char('B') if self.pomodoro.active => {
-                    self.pomodoro.break_mins = self.pomodoro.break_mins.saturating_sub(1).max(1);
-                    if matches!(self.pomodoro.phase, PomodoroPhase::Break) && !self.pomodoro.running
-                    {
-                        self.pomodoro.reset_phase();
-                    }
-                }
-                _ => {}
             }
+            KeyCode::Char('h') | KeyCode::Char('?') => self.show_help = !self.show_help,
+            KeyCode::Char('t') => self.toggle_focus(FocusView::Today),
+            KeyCode::Char('w') => self.toggle_focus(FocusView::Week),
+            KeyCode::Char('r') => {
+                self.show_help = false;
+                self.focus = FocusView::None;
+                self.start_refresh();
+            }
+            KeyCode::Tab | KeyCode::BackTab => self.scroll_today_focus = !self.scroll_today_focus,
+            KeyCode::Char('a') => self.animal = Some(self.current_animal().next()),
+            KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
+            KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
+            KeyCode::Char('p') => {
+                self.pomodoro.active = !self.pomodoro.active;
+                self.pomodoro.phase = PomodoroPhase::Work;
+                self.pomodoro.reset_phase();
+            }
+            KeyCode::Char('s') if self.pomodoro.active => {
+                self.pomodoro.running = !self.pomodoro.running;
+            }
+            KeyCode::Char('e') if self.pomodoro.active => self.pomodoro.reset_phase(),
+            KeyCode::Char('u') if self.pomodoro.active => {
+                self.pomodoro.adjust(PomodoroPhase::Work, 1);
+            }
+            KeyCode::Char('U') if self.pomodoro.active => {
+                self.pomodoro.adjust(PomodoroPhase::Work, -1);
+            }
+            KeyCode::Char('b') if self.pomodoro.active => {
+                self.pomodoro.adjust(PomodoroPhase::Break, 1);
+            }
+            KeyCode::Char('B') if self.pomodoro.active => {
+                self.pomodoro.adjust(PomodoroPhase::Break, -1);
+            }
+            _ => {}
         }
         AppAction::Continue
     }
 
+    fn toggle_focus(&mut self, view: FocusView) {
+        self.show_help = false;
+        self.focus = if self.focus == view {
+            FocusView::None
+        } else {
+            view
+        };
+        self.scroll_today_focus = view == FocusView::Today;
+    }
+
+    fn scroll_by(&mut self, delta: i16) {
+        let scroll = if self.scroll_today_focus {
+            &mut self.scroll_today
+        } else {
+            &mut self.scroll_week
+        };
+        *scroll = scroll.saturating_add_signed(delta);
+    }
+
+    /// Waits up to `timeout` for input; also advances timers and background work.
     pub fn poll_events(&mut self, timeout: Duration) -> anyhow::Result<AppAction> {
         self.pomodoro.tick();
-        if event::poll(timeout)? {
-            let ev = event::read()?;
-            return Ok(self.handle_event(ev));
-        }
+        self.poll_refresh();
         if self.should_auto_refresh() {
-            self.refresh();
+            self.start_refresh();
+        }
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
+        {
+            return Ok(self.handle_key(key));
         }
         Ok(AppAction::Continue)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn offline_app() -> App {
+        let config = Config {
+            mock: true,
+            ..Config::default()
+        };
+        App::new(config)
+    }
+
+    fn press(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> AppAction {
+        app.handle_key(KeyEvent::new(code, modifiers))
+    }
+
+    fn wait_for_refresh(app: &mut App) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.loading && Instant::now() < deadline {
+            app.poll_refresh();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!app.loading, "refresh did not finish");
+    }
+
+    #[test]
+    fn refresh_runs_in_the_background_and_applies() {
+        let mut app = offline_app();
+        assert!(app.loading);
+        wait_for_refresh(&mut app);
+        assert_eq!(app.care.len(), crate::model::CARE_SLOTS);
+        assert_eq!(app.warning, None);
+    }
+
+    #[test]
+    fn refresh_is_not_started_twice() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(app.loading);
+        wait_for_refresh(&mut app);
+        press(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(app.loading);
+        wait_for_refresh(&mut app);
+    }
+
+    #[test]
+    fn ctrl_c_quits_even_with_help_open() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE);
+        assert_eq!(
+            press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL),
+            AppAction::Quit
+        );
+    }
+
+    #[test]
+    fn q_closes_overlays_before_quitting() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('t'), KeyModifiers::NONE);
+        assert_eq!(app.focus, FocusView::Today);
+        assert_eq!(
+            press(&mut app, KeyCode::Char('q'), KeyModifiers::NONE),
+            AppAction::Continue
+        );
+        assert_eq!(
+            press(&mut app, KeyCode::Char('q'), KeyModifiers::NONE),
+            AppAction::Quit
+        );
+    }
+
+    #[test]
+    fn pomodoro_minutes_stay_in_range() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+        for _ in 0..200 {
+            press(&mut app, KeyCode::Char('U'), KeyModifiers::SHIFT);
+            press(&mut app, KeyCode::Char('b'), KeyModifiers::NONE);
+        }
+        assert_eq!(app.pomodoro.work_mins, 1);
+        assert_eq!(app.pomodoro.break_mins, MAX_BREAK_MINS);
+        assert_eq!(app.pomodoro.mmss(), "01:00");
+    }
+
+    #[test]
+    fn a_cycles_animals() {
+        let mut app = offline_app();
+        let first = app.current_animal();
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
+        assert_eq!(app.current_animal(), first.next());
     }
 }
