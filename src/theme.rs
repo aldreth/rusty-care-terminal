@@ -292,12 +292,14 @@ fn from_linux() -> Option<ResolvedTheme> {
     target_os = "openbsd"
 ))]
 fn parse_portal_color_scheme(stdout: &str) -> Option<ResolvedTheme> {
-    for token in stdout.split_whitespace() {
-        match token {
-            "1" => return Some(ResolvedTheme::Dark),
-            "2" => return Some(ResolvedTheme::Light),
-            "0" => return None,
-            _ => {}
+    let tokens: Vec<&str> = stdout.split_whitespace().collect();
+    for window in tokens.windows(2) {
+        if window[0] == "uint32" {
+            return match window[1] {
+                "1" => Some(ResolvedTheme::Dark),
+                "2" => Some(ResolvedTheme::Light),
+                _ => None, // 0 = no preference
+            };
         }
     }
     None
