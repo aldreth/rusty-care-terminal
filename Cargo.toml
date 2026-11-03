@@ -10,7 +10,7 @@ repository = "https://github.com/aldreth/rusty-care-terminal"
 homepage = "https://github.com/aldreth/rusty-care-terminal"
 keywords = ["tui", "ratatui", "mastodon", "git", "pomodoro"]
 categories = ["command-line-utilities"]
-include = ["/src", "/fixtures", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+include = ["/src", "/fixtures", "/README.md", "/CONFIGURATION.md", "/CHANGELOG.md", "/LICENSE"]
 
 [dependencies]
 anyhow = "1"
