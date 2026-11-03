@@ -79,9 +79,12 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | Key | Action |
 | --- | --- |
 | `h` | Help modal |
-| `q` / `Esc` | Quit (Esc closes help first) |
+| `q` / `Esc` | Quit (closes help / focus first) |
 | `r` | Refresh git / RSS / weather |
 | `t` | Toggle dark / light accents |
+| `1` / `2` / `3` | Fullscreen say / care / care (easier to select/copy) |
+| `g` / `G` | Fullscreen Today / Week commits |
+| `w` | Fullscreen weather |
 | `Tab` | Focus today vs week list for scrolling |
 | `j` / `k` or arrows | Scroll focused commit list |
 | `p` | Toggle pomodoro in the say-box |
@@ -90,7 +93,7 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | `u` / `U` | Work minutes +1 / −1 |
 | `b` / `B` | Break minutes +1 / −1 |
 
-Mouse capture is off so you can select and copy text (e.g. commit hashes) in the terminal.
+Terminal text selection is rectangular across the whole screen, so multi-column layouts mix panels. Press `1`/`2`/`3`/`g`/`w` to open one panel full-width, then select to copy.
 
 Desktop notifications stay off (quiet for headless/remote use).
 

@@ -23,7 +23,7 @@ pub fn say_box_lines(
         .collect();
 
     let bubble_h = bubble_lines.len();
-    let art_budget = max_height.saturating_sub(bubble_h).max(4);
+    let art_budget = max_height.saturating_sub(bubble_h).max(5);
     let art = resolve_art(character, art_budget);
     let mut lines = bubble_lines;
     lines.extend(colorize_art(&art, theme));
@@ -60,16 +60,16 @@ fn resolve_art(character: &str, height_budget: usize) -> String {
 }
 
 fn parrot_for_height(height_budget: usize) -> &'static str {
-    if height_budget >= 12 {
+    if height_budget >= 14 {
         PARROT_LARGE
-    } else if height_budget >= 9 {
+    } else if height_budget >= 10 {
         PARROT_MEDIUM
     } else {
         PARROT_SMALL
     }
 }
 
-/// Color party-parrot ASCII: cyan body, magenta beak-ish glyphs, reset outline.
+/// Dense party-parrot coloring: filled body cyan, beak magenta, eyes green.
 fn colorize_art(art: &str, theme: Theme) -> Vec<Line<'static>> {
     art.lines()
         .skip_while(|l| l.is_empty())
@@ -78,11 +78,13 @@ fn colorize_art(art: &str, theme: Theme) -> Vec<Line<'static>> {
                 .chars()
                 .map(|ch| {
                     let color = match ch {
-                        'o' | 'O' | '@' => theme.time_fresh,
-                        '>' | '<' | '=' | '~' | '"' | '\'' => theme.hash,
-                        '.' | '-' | '_' | '/' | '\\' | '|' | '(' | ')' => theme.border,
+                        'o' | 'O' | '0' => theme.time_fresh,
+                        '>' | '<' | '=' | '~' | '"' | '\'' | 'v' | 'V' => theme.hash,
+                        '█' | '▓' | '▒' | '#' | '@' | '%' => theme.bar,
+                        '▄' | '▀' | '▌' | '▐' | '■' | '●' => theme.bar,
+                        '.' | '-' | '_' | '/' | '\\' | '|' | '(' | ')' | '`' => theme.border,
                         ' ' => theme.fg,
-                        _ => theme.bar, // body fill
+                        _ => theme.bar,
                     };
                     Span::styled(ch.to_string(), Style::default().fg(color))
                 })
@@ -157,68 +159,69 @@ fn wrap_text(message: &str, width: usize) -> Vec<String> {
     rows
 }
 
+// Filled party-parrot silhouettes (block chars read as solid color in the TUI).
+
 const PARROT_SMALL: &str = r#"
   \
-   \   .--.
-     \/ o)\
-     /\__/ \
-    //  \_\
-   //    ||
-   ||    ||
+   \   ▄██▄
+     ▄█▀o▐█
+     █▌ >██
+     ▀█▄▄█▀
+    ██▌▐███
+   ███  ███
 "#;
 
 const PARROT_MEDIUM: &str = r#"
    \
-    \     .---.
-     \   / o o \
-      \  |  >  |
-       \/ \___/
-       /\  \_/ \
-      // \/   \ \
-     ||  |     | |
-     ||  |     | |
-      \\/       \/
+    \    ▄██████▄
+     \  ███▀o ▀███
+      \ ██▌  > ███
+       ▐███▄▄▄███▌
+       ▄██████████▄
+      ███▀▀▐▌▀▀███
+     ███   ▐▌   ███
+     ██    ▐▌    ██
 "#;
 
 const PARROT_LARGE: &str = r#"
     \
-     \        .------.
-      \      /  .--.  \
-       \    /  /    \  \
-        \   |  | oo |  |
-         \  |  |  > |  |
-          \ |  '----'  /
-           \/   ||    /
-           /\   ||   \
-          // \  ||  / \
-         //   \ || /   \
-        ||     \||/     |
-        ||      \/      |
-         \\            /
-          \\          /
-           \/\/\/\/\/
+     \      ▄████████▄
+      \   ▄███▀▀▀▀▀███▄
+       \ ███▀  o o  ▀███
+        ▐██▌    >    ▐██▌
+        ▐███▄      ▄███▌
+         ▀████▄▄▄████▀
+        ▄██████████████▄
+       ███▀▀▀▀▐▌▀▀▀▀▀███
+      ███     ▐▌     ███
+     ███      ▐▌      ███
+     ██       ▐▌       ██
+      ▀▄      ▐▌      ▄▀
+       ▀██████████████▀
 "#;
 
 const BUNNY: &str = r#"
  \
-  \  (\(\
-      (-.-)
-     o_(")(")
+  \  ██ ██
+     █▀█▀█
+     █>o<█
+     ▀███▀
 "#;
 
 const LLAMA: &str = r#"
  \
-  \   ~~
-     (oo)
-    /||||\
-   / |||| \
+  \   ▄▄
+     █oo█
+    █████
+   █ █ █ █
 "#;
 
 const CAT: &str = r#"
  \
-  \  /\_/\
-    ( o.o )
-     > ^ <
+  \  ▄███▄
+    █ o o █
+    █  >  █
+     ▀███▀
 "#;
 
 #[cfg(test)]
@@ -250,5 +253,11 @@ mod tests {
         let theme = Theme::dark();
         let out = say_box_lines("RANDOM", "hi", 40, 16, theme);
         assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn large_parrot_is_filled() {
+        assert!(PARROT_LARGE.contains('█'));
+        assert!(PARROT_MEDIUM.contains('█'));
     }
 }

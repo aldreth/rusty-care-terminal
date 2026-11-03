@@ -78,14 +78,14 @@ fn offline_fallback(cfg: &Config, index: usize, source: &CareSource) -> CareMess
     let idx = index.min(fallback.len().saturating_sub(1));
     if let Some(msg) = fallback.get(idx) {
         CareMessage {
-            source_label: format!("{} · offline", source.label()),
+            source_label: source.label(),
             text: msg.text.clone(),
             fetched_at: Local::now(),
             from_mock: true,
         }
     } else {
         CareMessage {
-            source_label: format!("{} · offline", source.label()),
+            source_label: source.label(),
             text: "Hi! You're doing great!!!".into(),
             fetched_at: Local::now(),
             from_mock: true,
@@ -100,7 +100,8 @@ fn fetch_one(source: &CareSource) -> Result<CareMessage> {
 
     match fetch_rss(&url) {
         Ok(text) => Ok(CareMessage {
-            source_label: format!("{} → {url}", source.label()),
+            // Display label only — never bake the feed URL into UI text.
+            source_label: source.label(),
             text,
             fetched_at: Local::now(),
             from_mock: false,
@@ -110,7 +111,7 @@ fn fetch_one(source: &CareSource) -> Result<CareMessage> {
             if let CareSource::Acct(acct) = source {
                 match fetch_rest(acct) {
                     Ok(text) => Ok(CareMessage {
-                        source_label: format!("{} → rest", source.label()),
+                        source_label: source.label(),
                         text,
                         fetched_at: Local::now(),
                         from_mock: false,

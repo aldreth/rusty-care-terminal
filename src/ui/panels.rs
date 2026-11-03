@@ -5,7 +5,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{BarChart, Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::app::{App, PomodoroPhase};
+use crate::app::{App, FocusView, PomodoroPhase};
 use crate::theme::Theme;
 use crate::ui::art;
 
@@ -45,14 +45,19 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ])
         .split(top[2]);
 
-    draw_today(frame, app, theme, top[0]);
-    draw_chart(frame, app, theme, top[1]);
-    draw_weather(frame, app, theme, side[0]);
-    draw_care_panel(frame, app, theme, 1, "💖", side[1]);
-    draw_care_panel(frame, app, theme, 2, "💬", side[2]);
-    draw_week(frame, app, theme, bottom[0]);
-    draw_say_box(frame, app, theme, bottom[1]);
-    draw_status(frame, app, theme, root[1]);
+    if app.focus != FocusView::None {
+        draw_focus_view(frame, app, theme, root[0]);
+        draw_status(frame, app, theme, root[1]);
+    } else {
+        draw_today(frame, app, theme, top[0]);
+        draw_chart(frame, app, theme, top[1]);
+        draw_weather(frame, app, theme, side[0]);
+        draw_care_panel(frame, app, theme, 1, "💖", side[1]);
+        draw_care_panel(frame, app, theme, 2, "💬", side[2]);
+        draw_week(frame, app, theme, bottom[0]);
+        draw_say_box(frame, app, theme, bottom[1]);
+        draw_status(frame, app, theme, root[1]);
+    }
 
     if app.show_help {
         draw_help_modal(frame, theme);
@@ -119,7 +124,7 @@ fn commit_lines(
     // One heading per repo (order = first appearance in the newest-first list).
     let mut repo_order: Vec<&str> = Vec::new();
     for c in entries {
-        if !repo_order.iter().any(|r| *r == c.repo.as_str()) {
+        if !repo_order.contains(&c.repo.as_str()) {
             repo_order.push(c.repo.as_str());
         }
     }
@@ -322,16 +327,24 @@ fn draw_care_panel(
     frame.render_widget(widget, area);
 }
 
-/// Keep `@user@host`; drop raw feed URLs and live/mock tags.
+/// Keep `@user@host`; strip legacy `→ url` / `· cached` suffixes and bare URLs.
 fn friendly_care_label(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+    let base = trimmed
+        .split(" → ")
+        .next()
+        .unwrap_or(trimmed)
+        .split(" · ")
+        .next()
+        .unwrap_or(trimmed)
+        .trim();
+    if base.is_empty() || base.starts_with("http://") || base.starts_with("https://") {
         return None;
     }
-    Some(trimmed.to_string())
+    Some(base.to_string())
 }
 
 fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -345,18 +358,28 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         .first()
         .map(|m| m.text.as_str())
         .unwrap_or("Hi! You're doing great!!!");
+    let source = app
+        .care
+        .first()
+        .and_then(|m| friendly_care_label(&m.source_label));
 
     let block = border_block("", theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let lines = art::say_box_lines(
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    if let Some(label) = source {
+        lines.push(Line::from(Span::styled(label, theme.accent_style())));
+        lines.push(Line::from(""));
+    }
+    let art_budget = inner.height.saturating_sub(lines.len() as u16) as usize;
+    lines.extend(art::say_box_lines(
         &app.config.say_box,
         msg,
         inner.width as usize,
-        inner.height as usize,
+        art_budget.max(6),
         theme,
-    );
+    ));
     let widget = Paragraph::new(lines)
         .style(theme.root_style())
         .wrap(Wrap { trim: false });
@@ -417,8 +440,90 @@ fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     frame.render_widget(widget, area);
 }
 
+fn draw_focus_view(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
+    let (title, lines) = match app.focus {
+        FocusView::None => return,
+        FocusView::Today => (
+            "📝 Today · Esc back · select to copy",
+            commit_lines(&app.commits.today, "no commits today", theme),
+        ),
+        FocusView::Week => (
+            "📝 Week · Esc back · select to copy",
+            commit_lines(&app.commits.week, "no commits this week", theme),
+        ),
+        FocusView::Weather => ("☀️ · Esc back · select to copy", weather_lines(app, theme)),
+        FocusView::Care(idx) => {
+            let title = match idx {
+                0 => "✨ say · Esc back · select to copy",
+                1 => "💖 · Esc back · select to copy",
+                _ => "💬 · Esc back · select to copy",
+            };
+            (title, care_focus_lines(app, idx, theme))
+        }
+    };
+
+    let widget = Paragraph::new(lines)
+        .block(border_block(title, theme))
+        .style(theme.root_style())
+        .wrap(Wrap { trim: false })
+        .scroll((
+            if matches!(app.focus, FocusView::Week) {
+                app.scroll_week
+            } else if matches!(app.focus, FocusView::Today) {
+                app.scroll_today
+            } else {
+                0
+            },
+            0,
+        ));
+    frame.render_widget(widget, area);
+}
+
+fn weather_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
+    if let Some(w) = &app.weather {
+        vec![
+            Line::from(Span::styled(
+                format!("{} · {}", w.temperature, w.summary),
+                Style::default().fg(theme.fg),
+            )),
+            Line::from(Span::styled(
+                w.high_low.clone(),
+                Style::default().fg(theme.fg),
+            )),
+            Line::from(Span::styled(w.place.clone(), theme.muted_style())),
+            Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
+        ]
+    } else {
+        vec![Line::from(Span::styled(
+            "no weather yet",
+            theme.muted_style(),
+        ))]
+    }
+}
+
+fn care_focus_lines(app: &App, index: usize, theme: Theme) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    match app.care.get(index) {
+        Some(msg) => {
+            if let Some(label) = friendly_care_label(&msg.source_label) {
+                lines.push(Line::from(Span::styled(label, theme.accent_style())));
+                lines.push(Line::from(""));
+            }
+            lines.push(Line::from(Span::styled(
+                msg.text.clone(),
+                Style::default().fg(theme.fg),
+            )));
+        }
+        None => lines.push(Line::from(Span::styled(
+            "no care message",
+            theme.muted_style(),
+        ))),
+    }
+    lines
+}
+
 fn draw_help_modal(frame: &mut Frame, theme: Theme) {
-    let area = centered_rect(56, 18, frame.area());
+    let area = centered_rect(62, 20, frame.area());
     frame.render_widget(Clear, area);
 
     let lines = vec![
@@ -427,18 +532,27 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
             theme.accent_style().add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        help_line("q / Esc", "quit (Esc closes help first)", theme),
+        help_line("q / Esc", "quit (closes help / focus first)", theme),
         help_line("h", "toggle this help", theme),
         help_line("r", "refresh git / care / weather", theme),
         help_line("t", "toggle dark / light accents", theme),
+        help_line(
+            "1 / 2 / 3",
+            "fullscreen say / care / care (for copy)",
+            theme,
+        ),
+        help_line("g / G", "fullscreen Today / Week commits", theme),
+        help_line("w", "fullscreen weather", theme),
         help_line("Tab", "focus Today vs Week list", theme),
         help_line("j / k", "scroll focused commit list", theme),
         help_line("p", "pomodoro in the say-box", theme),
-        help_line("s / e", "pomo start-pause / reset", theme),
-        help_line("u U b B", "pomo work± / break±", theme),
         Line::from(""),
         Line::from(Span::styled(
-            "Tip: mouse capture is off — select text to copy hashes.",
+            "Terminal selection is rectangular across columns — use 1/2/3/g/w",
+            theme.muted_style(),
+        )),
+        Line::from(Span::styled(
+            "to open one panel full-width, then select text to copy.",
             theme.muted_style(),
         )),
     ];
@@ -512,6 +626,13 @@ mod tests {
         assert_eq!(
             friendly_care_label("@selfcaregentle@hachyderm.io").as_deref(),
             Some("@selfcaregentle@hachyderm.io")
+        );
+        assert_eq!(
+            friendly_care_label(
+                "@GoatsLive@mastodon.social → https://mastodon.social/@GoatsLive.rss"
+            )
+            .as_deref(),
+            Some("@GoatsLive@mastodon.social")
         );
         assert_eq!(friendly_care_label("https://hachyderm.io/@x.rss"), None);
     }

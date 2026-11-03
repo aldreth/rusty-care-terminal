@@ -20,13 +20,7 @@ pub fn mock_care_messages(cfg: &Config) -> Vec<CareMessage> {
         .map(|i| {
             let label = sources
                 .get(i)
-                .map(|s| {
-                    // Surface the intended RSS endpoint even while content is mocked.
-                    match s.rss_url() {
-                        Some(url) => format!("{} → {url}", s.label()),
-                        None => s.label(),
-                    }
-                })
+                .map(|s| s.label())
                 .unwrap_or_else(|| format!("care-{}", i + 1));
             let text = FALLBACK[i % FALLBACK.len()].to_string();
             CareMessage {

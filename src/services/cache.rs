@@ -44,11 +44,24 @@ pub fn load_care(key: &str) -> Option<CareMessage> {
         return None;
     }
     Some(CareMessage {
-        source_label: format!("{label} · cached"),
+        // Keep the stored account label; strip any legacy "→ url" suffix.
+        source_label: clean_source_label(&label),
         text: body,
         fetched_at: Local::now(),
         from_mock: true,
     })
+}
+
+fn clean_source_label(raw: &str) -> String {
+    let base = raw
+        .split(" → ")
+        .next()
+        .unwrap_or(raw)
+        .split(" · ")
+        .next()
+        .unwrap_or(raw)
+        .trim();
+    base.to_string()
 }
 
 pub fn set_backoff_secs(secs: u64) {
@@ -99,7 +112,7 @@ mod tests {
         save_care(key, &msg);
         let loaded = load_care(key).expect("cached");
         assert!(loaded.text.contains("Drink water"));
-        assert!(loaded.source_label.contains("cached"));
+        assert_eq!(loaded.source_label, "@bot@example.com");
         let _ = fs::remove_file(care_path(key));
     }
 

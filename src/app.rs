@@ -13,6 +13,18 @@ pub enum AppAction {
     Quit,
 }
 
+/// Full-screen view of one panel so terminal text selection stays in-bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FocusView {
+    #[default]
+    None,
+    Today,
+    Week,
+    /// Care slot: 0 = say-box source, 1/2 = side care panels.
+    Care(usize),
+    Weather,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PomodoroPhase {
     Work,
@@ -96,6 +108,7 @@ pub struct App {
     /// Which commit list receives j/k scrolling: true = today, false = week.
     pub scroll_today_focus: bool,
     pub show_help: bool,
+    pub focus: FocusView,
 }
 
 impl App {
@@ -117,6 +130,7 @@ impl App {
             scroll_week: 0,
             scroll_today_focus: true,
             show_help: false,
+            focus: FocusView::None,
         };
         app.refresh();
         app
@@ -149,7 +163,9 @@ impl App {
         }
 
         // Keep the footer short: shortcuts + a single warning if something failed.
-        self.status = "q quit · r refresh · t theme · h help · Tab/j/k scroll · p pomo".into();
+        self.status =
+            "q quit · r refresh · t theme · h help · 1-3/g/w focus-to-copy · Tab/j/k · p pomo"
+                .into();
         self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.last_refresh_at = Local::now();
@@ -172,6 +188,8 @@ impl App {
                 KeyCode::Char('q') => {
                     if self.show_help {
                         self.show_help = false;
+                    } else if self.focus != FocusView::None {
+                        self.focus = FocusView::None;
                     } else {
                         return AppAction::Quit;
                     }
@@ -179,6 +197,8 @@ impl App {
                 KeyCode::Esc => {
                     if self.show_help {
                         self.show_help = false;
+                    } else if self.focus != FocusView::None {
+                        self.focus = FocusView::None;
                     } else {
                         return AppAction::Quit;
                     }
@@ -186,8 +206,19 @@ impl App {
                 KeyCode::Char('h') => {
                     self.show_help = !self.show_help;
                 }
+                KeyCode::Char('1') => self.focus = FocusView::Care(0),
+                KeyCode::Char('2') => self.focus = FocusView::Care(1),
+                KeyCode::Char('3') => self.focus = FocusView::Care(2),
+                KeyCode::Char('g') => self.focus = FocusView::Today,
+                KeyCode::Char('w') => {
+                    // Weather focus (also closes help if open).
+                    self.show_help = false;
+                    self.focus = FocusView::Weather;
+                }
+                KeyCode::Char('G') => self.focus = FocusView::Week,
                 KeyCode::Char('r') => {
                     self.show_help = false;
+                    self.focus = FocusView::None;
                     self.refresh();
                 }
                 KeyCode::Tab => {
