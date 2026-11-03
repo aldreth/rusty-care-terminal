@@ -82,18 +82,15 @@ fn border_block_selected(title: &str, theme: Theme, selected: bool) -> Block<'_>
             theme.title_style().add_modifier(Modifier::BOLD),
         )
     };
-    let title_text = if selected && !title.is_empty() {
-        format!("▸ {title}")
-    } else {
-        title.to_string()
-    };
+    // Keep the title string identical when selected — only border type/style
+    // change — so the emoji and label do not shift on Tab.
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(border_type)
         .border_style(border_style)
         .style(theme.root_style());
-    if !title_text.is_empty() {
-        block = block.title(Span::styled(title_text, title_style));
+    if !title.is_empty() {
+        block = block.title(Span::styled(title, title_style));
     }
     block
 }
