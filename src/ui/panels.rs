@@ -253,6 +253,7 @@ fn draw_chart(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         .value_style(
             Style::default()
                 .fg(theme.bar_value)
+                .bg(theme.bar)
                 .add_modifier(Modifier::BOLD),
         )
         .label_style(theme.muted_style());
@@ -457,11 +458,6 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         return;
     }
 
-    let msg = app
-        .care
-        .first()
-        .map(|m| m.text.as_str())
-        .unwrap_or("Hi! You're doing great!!!");
     let source = app
         .care
         .first()
@@ -491,8 +487,8 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         height = height.saturating_sub(1);
     }
     let lines = art::say_box_lines(
-        &app.config.say_box,
-        msg,
+        app.current_animal(),
+        app.say_box_message(),
         inner.width as usize,
         height as usize,
         theme,
@@ -605,13 +601,14 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         help_line("Tab", "select Today vs Week for scrolling", theme),
         help_line("j / k", "scroll selected commit list", theme),
         help_line("p", "pomodoro in the say-box", theme),
+        help_line("a", "next say-box animal", theme),
         Line::from(""),
         Line::from(Span::styled(
             "Theme: RCT_THEME / --theme (dark|light|auto) — no key toggle.",
             theme.muted_style(),
         )),
         Line::from(Span::styled(
-            "Say-box art: RCT_SAY_BOX=parrot|bunny|llama|cat|RANDOM|/path.png",
+            "Starting animal: RCT_SAY_BOX=parrot|cat|bunny|llama|random",
             theme.muted_style(),
         )),
     ];

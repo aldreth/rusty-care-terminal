@@ -48,12 +48,12 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | `RCT_GIT_AUTHOR` | `--git-author` | Name/email(s) for sole/joint authorship filter |
 | `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
 | `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
-| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` \| `RANDOM` \| path to `.png`/`.jpg` or text/`.cow` art |
+| `RCT_SAY_BOX` | `--say-box` | Starting animal: `parrot` \| `cat` \| `bunny` \| `llama` \| `random` |
 | `RCT_UPDATE_INTERVAL` | `--update-interval` | Minutes (default 20) |
 | `RCT_MOCK` | `--mock` | Skip live RSS; use bundled kindness text |
 | `RCT_WEATHER` | `--weather` | City name or `lat,lon` (Open-Meteo) |
 | `RCT_CELSIUS` | `--celsius` | `true` (default) / `false` for °F |
-| `RCT_TERMINAL_TITLE` | — | Window title (default `tiny care`) |
+| `RCT_TERMINAL_TITLE` | — | Window title (default `Rusty care terminal`) |
 | `RCT_POMODORO` | `--pomodoro` | Focus minutes (default 25) |
 | `RCT_BREAK` | `--break-minutes` | Break minutes (default 5) |
 | `RCT_THEME` | `--theme` | `auto` (default: terminal/`COLORFGBG`, then OS) \| `dark` \| `light` |
@@ -85,13 +85,14 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | `w` | Fullscreen Week commits (for multi-line copy) |
 | `Tab` | Select which commit list j/k scrolls (highlighted border) |
 | `j` / `k` or arrows | Scroll selected commit list |
+| `a` | Next say-box animal (parrot → cat → bunny → llama) |
 | `p` | Toggle pomodoro in the say-box |
 | `s` | Start / pause pomodoro |
 | `e` | Reset current phase |
 | `u` / `U` | Work minutes +1 / −1 |
 | `b` / `B` | Break minutes +1 / −1 |
 
-Theme is only via `RCT_THEME` / `--theme` (no key toggle). Say-box pictures are configurable with `RCT_SAY_BOX` (built-in names or a path to a PNG/JPEG or text art file). Built-in creatures are outlined pixel sprites with hand-drawn sizes; the say box picks the largest one that fits (scaling only by whole pixels) and hides the art when the panel is too short. A PNG works best as small pixel art (roughly 16–32 px) with a transparent background.
+Theme is only via `RCT_THEME` / `--theme` (no key toggle). The say-box animal starts from `RCT_SAY_BOX` and `a` cycles through the four built-in creatures. They are outlined pixel sprites with hand-drawn sizes; the say box picks the largest one that fits (scaling only by whole pixels) and hides the art when the panel is too short.
 
 Desktop notifications stay off (quiet for headless/remote use).
 

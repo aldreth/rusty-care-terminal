@@ -78,7 +78,7 @@ impl Theme {
             muted: Color::Rgb(130, 140, 150),
             accent: Color::Rgb(255, 140, 200),
             bar: Color::Rgb(80, 210, 230),
-            bar_value: Color::Reset,
+            bar_value: Color::Rgb(16, 24, 32),
         }
     }
 
@@ -95,7 +95,7 @@ impl Theme {
             muted: Color::Rgb(100, 108, 118),
             accent: Color::Rgb(150, 40, 100),
             bar: Color::Rgb(20, 130, 165),
-            bar_value: Color::Reset,
+            bar_value: Color::Rgb(250, 250, 250),
         }
     }
 

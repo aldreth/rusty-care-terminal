@@ -4,7 +4,7 @@ use chrono::Local;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
 use crate::config::Config;
-use crate::model::{CareMessage, CommitStats, WeatherSnapshot};
+use crate::model::{Animal, CareMessage, CommitStats, WeatherSnapshot};
 use crate::services::{git, mastodon, weather};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,11 +106,14 @@ pub struct App {
     pub scroll_today_focus: bool,
     pub show_help: bool,
     pub focus: FocusView,
+    /// Say-box animal; `None` = RANDOM until the user presses `a`.
+    pub animal: Option<Animal>,
 }
 
 impl App {
     pub fn new(config: Config) -> Self {
         let pomodoro = PomodoroState::new(config.pomodoro, config.break_minutes);
+        let animal = config.say_box;
         let mut app = Self {
             config,
             commits: CommitStats::default(),
@@ -128,9 +131,22 @@ impl App {
             scroll_today_focus: true,
             show_help: false,
             focus: FocusView::None,
+            animal,
         };
         app.refresh();
         app
+    }
+
+    pub fn say_box_message(&self) -> &str {
+        self.care
+            .first()
+            .map(|m| m.text.as_str())
+            .unwrap_or("Hi! You're doing great!!!")
+    }
+
+    pub fn current_animal(&self) -> Animal {
+        self.animal
+            .unwrap_or_else(|| Animal::for_message(self.say_box_message()))
     }
 
     pub fn refresh(&mut self) {
@@ -161,7 +177,8 @@ impl App {
 
         // Keep the footer short: shortcuts + a single warning if something failed.
         self.status =
-            "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo".into();
+            "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo · a animal"
+                .into();
         self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.last_refresh_at = Local::now();
@@ -227,6 +244,9 @@ impl App {
                 }
                 KeyCode::Tab => {
                     self.scroll_today_focus = !self.scroll_today_focus;
+                }
+                KeyCode::Char('a') => {
+                    self.animal = Some(self.current_animal().next());
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     if self.scroll_today_focus {

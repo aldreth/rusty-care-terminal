@@ -1,5 +1,39 @@
 use chrono::{DateTime, Local};
 
+/// Say-box creature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Animal {
+    Parrot,
+    Cat,
+    Bunny,
+    Llama,
+}
+
+impl Animal {
+    pub const ALL: [Animal; 4] = [Animal::Parrot, Animal::Cat, Animal::Bunny, Animal::Llama];
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "parrot" => Some(Animal::Parrot),
+            "cat" => Some(Animal::Cat),
+            "bunny" => Some(Animal::Bunny),
+            "llama" => Some(Animal::Llama),
+            _ => None,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let i = Self::ALL.iter().position(|a| *a == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+
+    /// Stable pick for `RANDOM`, so the creature only changes with the message.
+    pub fn for_message(message: &str) -> Self {
+        let n: usize = message.bytes().map(usize::from).sum();
+        Self::ALL[n % Self::ALL.len()]
+    }
+}
+
 /// How a care source is addressed (`@user@instance` or an explicit feed URL).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CareSource {
@@ -105,6 +139,20 @@ impl CommitStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animals_cycle_through_all_and_wrap() {
+        let mut a = Animal::Parrot;
+        let mut seen = vec![a];
+        for _ in 0..3 {
+            a = a.next();
+            seen.push(a);
+        }
+        assert_eq!(seen, Animal::ALL);
+        assert_eq!(a.next(), Animal::Parrot);
+        assert_eq!(Animal::parse(" Llama "), Some(Animal::Llama));
+        assert_eq!(Animal::parse("/tmp/x.png"), None);
+    }
 
     #[test]
     fn acct_resolves_to_mastodon_rss() {

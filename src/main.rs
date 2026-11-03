@@ -44,7 +44,7 @@ struct Cli {
     #[arg(long, env = "RCT_BOT_FEEDS")]
     bot_feeds: Option<String>,
 
-    /// Say-box character: parrot | bunny | llama | cat | RANDOM | path (overrides RCT_SAY_BOX).
+    /// Starting say-box animal: parrot | cat | bunny | llama | random (`a` cycles in-app).
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 

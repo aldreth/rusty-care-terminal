@@ -11,8 +11,10 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
+use crate::model::Animal;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Rgb(pub u8, pub u8, pub u8);
+struct Rgb(u8, u8, u8);
 
 impl Rgb {
     fn color(self) -> Color {
@@ -184,8 +186,6 @@ const LLAMA: &[&str] = &[
     ".KKK.....KKK....",
 ];
 
-pub const CREATURES: [&str; 4] = ["parrot", "cat", "bunny", "llama"];
-
 /// A pixel grid with an anchor: the column of the head's top-left outline pixel,
 /// where the speech-bubble tail lands.
 #[derive(Clone)]
@@ -206,12 +206,8 @@ impl Sprite {
                 pixels[y * width + x] = palette(ch);
             }
         }
-        Self::new(width, height, pixels)
-    }
-
-    fn new(width: usize, height: usize, pixels: Vec<Option<Rgb>>) -> Self {
         let anchor_x = (0..width)
-            .find(|&x| pixels.get(x).copied().flatten().is_some())
+            .find(|&x| pixels[x].is_some())
             .unwrap_or(width / 2);
         Self {
             width,
@@ -219,32 +215,6 @@ impl Sprite {
             pixels,
             anchor_x,
         }
-    }
-
-    /// Build from RGBA bytes, shrinking (nearest neighbour) only if larger than `max_px`.
-    pub fn from_rgba(rgba: &[u8], width: u32, height: u32, max_px: (usize, usize)) -> Self {
-        let sw = width as usize;
-        let sh = height as usize;
-        let mut src = vec![None; sw * sh];
-        for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate().take(sw * sh) {
-            if px[3] >= 128 {
-                src[i] = Some(Rgb(px[0], px[1], px[2]));
-            }
-        }
-        let (mw, mh) = (max_px.0.max(1), max_px.1.max(1));
-        if sw <= mw && sh <= mh {
-            return Self::new(sw, sh, src);
-        }
-        let scale = (mw as f32 / sw as f32).min(mh as f32 / sh as f32);
-        let tw = ((sw as f32 * scale).floor() as usize).max(1);
-        let th = ((sh as f32 * scale).floor() as usize).max(1);
-        let mut out = vec![None; tw * th];
-        for y in 0..th {
-            for x in 0..tw {
-                out[y * tw + x] = src[(y * sh / th) * sw + (x * sw / tw)];
-            }
-        }
-        Self::new(tw, th, out)
     }
 
     fn rows(&self, scale: usize) -> usize {
@@ -265,13 +235,13 @@ impl Sprite {
     }
 }
 
-/// Hand-drawn variants for a creature, largest first.
-pub fn creature(name: &str) -> Vec<Sprite> {
-    match name {
-        "cat" => vec![Sprite::from_map(CAT), Sprite::from_map(CAT_TINY)],
-        "bunny" => vec![Sprite::from_map(BUNNY), Sprite::from_map(BUNNY_TINY)],
-        "llama" => vec![Sprite::from_map(LLAMA), Sprite::from_map(LLAMA_TINY)],
-        _ => vec![
+/// Hand-drawn variants for an animal, largest first.
+pub fn creature(animal: Animal) -> Vec<Sprite> {
+    match animal {
+        Animal::Cat => vec![Sprite::from_map(CAT), Sprite::from_map(CAT_TINY)],
+        Animal::Bunny => vec![Sprite::from_map(BUNNY), Sprite::from_map(BUNNY_TINY)],
+        Animal::Llama => vec![Sprite::from_map(LLAMA), Sprite::from_map(LLAMA_TINY)],
+        Animal::Parrot => vec![
             Sprite::from_map(PARROT_LARGE),
             Sprite::from_map(PARROT_SMALL),
             Sprite::from_map(PARROT_TINY),
@@ -333,8 +303,8 @@ mod tests {
 
     #[test]
     fn every_creature_has_a_variant() {
-        for name in CREATURES {
-            assert!(!creature(name).is_empty(), "{name}");
+        for animal in Animal::ALL {
+            assert!(!creature(animal).is_empty(), "{animal:?}");
         }
     }
 
@@ -358,25 +328,25 @@ mod tests {
 
     #[test]
     fn picks_large_parrot_when_roomy_and_small_when_tight() {
-        let roomy = fit(&creature("parrot"), 40, 14).expect("fits");
+        let roomy = fit(&creature(Animal::Parrot), 40, 14).expect("fits");
         assert_eq!(roomy.cols, 32);
-        let tight = fit(&creature("parrot"), 40, 8).expect("fits");
+        let tight = fit(&creature(Animal::Parrot), 40, 8).expect("fits");
         assert_eq!(tight.cols, 20);
-        let tiny = fit(&creature("parrot"), 40, 4).expect("fits");
+        let tiny = fit(&creature(Animal::Parrot), 40, 4).expect("fits");
         assert_eq!(tiny.cols, 16);
-        assert!(fit(&creature("parrot"), 40, 3).is_none());
+        assert!(fit(&creature(Animal::Parrot), 40, 3).is_none());
     }
 
     #[test]
     fn upscales_by_whole_pixels() {
-        let big = fit(&creature("cat"), 60, 30).expect("fits");
+        let big = fit(&creature(Animal::Cat), 60, 30).expect("fits");
         assert_eq!(big.cols, 48);
         assert_eq!(big.lines.len(), 21);
     }
 
     #[test]
     fn anchor_is_head_top_left() {
-        let placed = fit(&creature("parrot"), 40, 14).expect("fits");
+        let placed = fit(&creature(Animal::Parrot), 40, 14).expect("fits");
         assert_eq!(placed.anchor_col, 7);
     }
 }

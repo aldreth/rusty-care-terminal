@@ -2,7 +2,7 @@ use std::env;
 use std::path::PathBuf;
 
 use crate::error::{CareError, Result};
-use crate::model::CareSource;
+use crate::model::{Animal, CareSource};
 use crate::theme::ThemeMode;
 
 const DEFAULT_BOTS: &[&str] = &[
@@ -16,7 +16,8 @@ const DEFAULT_BOTS: &[&str] = &[
 pub struct Config {
     pub bots: Vec<CareSource>,
     pub bot_feeds: Vec<String>,
-    pub say_box: String,
+    /// Starting say-box animal; `None` = RANDOM (picked per message).
+    pub say_box: Option<Animal>,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
     /// Identity strings for sole/joint authorship filter (comma-separated).
@@ -38,14 +39,14 @@ impl Default for Config {
         Self {
             bots: DEFAULT_BOTS.iter().map(|b| CareSource::parse(b)).collect(),
             bot_feeds: Vec::new(),
-            say_box: "parrot".into(),
+            say_box: Some(Animal::Parrot),
             repos: Vec::new(),
             repos_depth: 1,
             git_author: None,
             weather: None,
             celsius: true,
             update_interval_mins: 20,
-            terminal_title: "tiny care".into(),
+            terminal_title: "Rusty care terminal".into(),
             pomodoro: 25,
             break_minutes: 5,
             mock: false,
@@ -76,7 +77,7 @@ impl Config {
             cfg.bot_feeds = split_csv(&feeds);
         }
         if let Some(say_box) = cli.say_box {
-            cfg.say_box = say_box;
+            cfg.say_box = parse_say_box(&say_box)?;
         }
         if let Some(author) = cli.git_author {
             cfg.git_author = Some(author);
@@ -151,7 +152,7 @@ fn merge_env(cfg: &mut Config) -> Result<()> {
         cfg.bot_feeds = split_csv(&v);
     }
     if let Some(v) = env_first(&["RCT_SAY_BOX", "TTC_SAY_BOX"]) {
-        cfg.say_box = v;
+        cfg.say_box = parse_say_box(&v)?;
     }
     if let Some(v) = env_first(&["RCT_REPOS", "TTC_REPOS"]) {
         cfg.repos = expand_repos(&split_csv(&v));
@@ -221,6 +222,17 @@ fn expand_repos(raw: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+fn parse_say_box(v: &str) -> Result<Option<Animal>> {
+    if v.trim().eq_ignore_ascii_case("random") {
+        return Ok(None);
+    }
+    Animal::parse(v).map(Some).ok_or_else(|| {
+        CareError::Config(format!(
+            "invalid say box: {v} (parrot|cat|bunny|llama|random)"
+        ))
+    })
+}
+
 fn parse_bool(v: &str) -> Result<bool> {
     match v.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
@@ -238,5 +250,12 @@ mod tests {
         let cfg = Config::default();
         assert_eq!(cfg.bots.len(), 3);
         assert!(cfg.bots[0].rss_url().unwrap().contains("selfcare.rss"));
+    }
+
+    #[test]
+    fn say_box_accepts_animals_and_random_only() {
+        assert_eq!(parse_say_box("Cat").unwrap(), Some(Animal::Cat));
+        assert_eq!(parse_say_box("RANDOM").unwrap(), None);
+        assert!(parse_say_box("~/art/parrot.png").is_err());
     }
 }
