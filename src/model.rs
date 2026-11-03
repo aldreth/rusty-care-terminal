@@ -48,6 +48,13 @@ fn split_acct(acct: &str) -> Option<(&str, &str)> {
     }
 }
 
+/// `@user@host` / `user@host` → `https://{host}/@{user}`.
+pub fn profile_url_from_acct(acct_or_label: &str) -> Option<String> {
+    let acct = acct_or_label.trim().trim_start_matches('@');
+    let (user, host) = split_acct(acct)?;
+    Some(format!("https://{host}/@{user}"))
+}
+
 #[derive(Debug, Clone)]
 pub struct CareMessage {
     pub source_label: String,
@@ -105,6 +112,10 @@ mod tests {
         assert_eq!(
             src.rss_url().as_deref(),
             Some("https://hachyderm.io/@selfcare.rss")
+        );
+        assert_eq!(
+            profile_url_from_acct("@selfcare@hachyderm.io").as_deref(),
+            Some("https://hachyderm.io/@selfcare")
         );
     }
 

@@ -1,11 +1,15 @@
+use std::num::NonZeroU16;
+
 use chrono::{DateTime, Local};
 use ratatui::Frame;
+use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{BarChart, Block, BorderType, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{BarChart, Block, BorderType, Borders, Clear, Paragraph, Widget, Wrap};
 
 use crate::app::{App, FocusView, PomodoroPhase};
+use crate::model::profile_url_from_acct;
 use crate::theme::Theme;
 use crate::ui::art;
 
@@ -307,43 +311,78 @@ fn draw_care_panel(
     title: &str,
     area: Rect,
 ) {
-    let mut lines = Vec::new();
+    let block = border_block(title, theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     match app.care.get(index) {
         Some(msg) if app.loading && msg.text.is_empty() => {
-            lines.push(Line::from(Span::styled(
-                "loading care…",
-                theme.muted_style(),
-            )));
+            frame.render_widget(
+                Paragraph::new(Span::styled("loading care…", theme.muted_style()))
+                    .style(theme.root_style()),
+                inner,
+            );
         }
         Some(msg) => {
+            let mut y = inner.y;
+            let mut height = inner.height;
             if let Some(label) = friendly_care_label(&msg.source_label) {
-                lines.push(Line::from(Span::styled(label, theme.accent_style())));
-                lines.push(Line::from(""));
+                if height > 0 {
+                    render_acct_label(
+                        frame.buffer_mut(),
+                        Rect {
+                            x: inner.x,
+                            y,
+                            width: inner.width,
+                            height: 1,
+                        },
+                        &label,
+                        theme,
+                    );
+                    y = y.saturating_add(1);
+                    height = height.saturating_sub(1);
+                }
+                if height > 0 {
+                    // Blank line under the account, matching prior layout.
+                    y = y.saturating_add(1);
+                    height = height.saturating_sub(1);
+                }
             }
-            lines.push(Line::from(Span::styled(
-                msg.text.clone(),
-                Style::default().fg(theme.fg),
-            )));
+            if height > 0 {
+                frame.render_widget(
+                    Paragraph::new(Span::styled(
+                        msg.text.clone(),
+                        Style::default().fg(theme.fg),
+                    ))
+                    .style(theme.root_style())
+                    .wrap(Wrap { trim: true }),
+                    Rect {
+                        x: inner.x,
+                        y,
+                        width: inner.width,
+                        height,
+                    },
+                );
+            }
         }
         None if app.loading => {
-            lines.push(Line::from(Span::styled(
-                "loading care…",
-                theme.muted_style(),
-            )));
+            frame.render_widget(
+                Paragraph::new(Span::styled("loading care…", theme.muted_style()))
+                    .style(theme.root_style()),
+                inner,
+            );
         }
         None => {
-            lines.push(Line::from(Span::styled(
-                "Hi! You're doing great!!!",
-                Style::default().fg(theme.fg),
-            )));
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    "Hi! You're doing great!!!",
+                    Style::default().fg(theme.fg),
+                ))
+                .style(theme.root_style()),
+                inner,
+            );
         }
     };
-
-    let widget = Paragraph::new(lines)
-        .block(border_block(title, theme))
-        .style(theme.root_style())
-        .wrap(Wrap { trim: true });
-    frame.render_widget(widget, area);
 }
 
 /// Keep `@user@host`; strip legacy `→ url` / `· cached` suffixes and bare URLs.
@@ -366,6 +405,45 @@ fn friendly_care_label(raw: &str) -> Option<String> {
     Some(base.to_string())
 }
 
+fn render_acct_label(buf: &mut Buffer, area: Rect, label: &str, theme: Theme) {
+    let style = theme.accent_style().add_modifier(Modifier::UNDERLINED);
+    if let Some(url) = profile_url_from_acct(label) {
+        render_osc8_hyperlink(buf, area, label, &url, style);
+    } else {
+        Line::from(Span::styled(label.to_string(), style)).render(area, buf);
+    }
+}
+
+/// OSC 8 hyperlink squeezed into the first cell with [`CellDiffOption::ForcedWidth`]
+/// so the terminal still sees one clickable run without width/diff glitches.
+fn render_osc8_hyperlink(buf: &mut Buffer, area: Rect, text: &str, url: &str, style: Style) {
+    if area.width == 0 || area.height == 0 || text.is_empty() {
+        return;
+    }
+
+    // Acct labels are ASCII; truncate by char count to the cell run we occupy.
+    let visible: String = text.chars().take(area.width as usize).collect();
+    let width = visible.chars().count() as u16;
+    let Some(forced) = NonZeroU16::new(width) else {
+        return;
+    };
+
+    let linked = format!("\x1B]8;;{url}\x07{visible}\x1B]8;;\x07");
+    for col in 0..width {
+        let Some(cell) = buf.cell_mut((area.x + col, area.y)) else {
+            break;
+        };
+        cell.set_style(style);
+        if col == 0 {
+            cell.set_symbol(&linked);
+            cell.set_diff_option(CellDiffOption::ForcedWidth(forced));
+        } else {
+            cell.set_symbol("");
+            cell.set_diff_option(CellDiffOption::Skip);
+        }
+    }
+}
+
 fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     if app.pomodoro.active {
         draw_pomodoro(frame, app, theme, area);
@@ -386,23 +464,50 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut y = inner.y;
+    let mut height = inner.height;
     if let Some(label) = source {
-        lines.push(Line::from(Span::styled(label, theme.accent_style())));
-        lines.push(Line::from(""));
+        if height > 0 {
+            render_acct_label(
+                frame.buffer_mut(),
+                Rect {
+                    x: inner.x,
+                    y,
+                    width: inner.width,
+                    height: 1,
+                },
+                &label,
+                theme,
+            );
+            y = y.saturating_add(1);
+            height = height.saturating_sub(1);
+        }
+        if height > 0 {
+            y = y.saturating_add(1);
+            height = height.saturating_sub(1);
+        }
     }
-    let art_budget = inner.height.saturating_sub(lines.len() as u16) as usize;
-    lines.extend(art::say_box_lines(
+    let art_budget = height as usize;
+    let lines = art::say_box_lines(
         &app.config.say_box,
         msg,
         inner.width as usize,
         art_budget.max(6),
         theme,
-    ));
-    let widget = Paragraph::new(lines)
-        .style(theme.root_style())
-        .wrap(Wrap { trim: false });
-    frame.render_widget(widget, inner);
+    );
+    if height > 0 {
+        frame.render_widget(
+            Paragraph::new(lines)
+                .style(theme.root_style())
+                .wrap(Wrap { trim: false }),
+            Rect {
+                x: inner.x,
+                y,
+                width: inner.width,
+                height,
+            },
+        );
+    }
 }
 
 fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -589,6 +694,10 @@ mod tests {
             Some("@GoatsLive@mastodon.social")
         );
         assert_eq!(friendly_care_label("https://hachyderm.io/@x.rss"), None);
+        assert_eq!(
+            profile_url_from_acct("@selfcare@hachyderm.io").as_deref(),
+            Some("https://hachyderm.io/@selfcare")
+        );
     }
 
     #[test]
