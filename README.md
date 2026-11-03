@@ -56,7 +56,7 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | `RCT_TERMINAL_TITLE` | — | Window title (default `tiny care`) |
 | `RCT_POMODORO` | `--pomodoro` | Focus minutes (default 25) |
 | `RCT_BREAK` | `--break-minutes` | Break minutes (default 5) |
-| `RCT_THEME` | `--theme` | `dark` (default) \| `light` \| `auto` |
+| `RCT_THEME` | `--theme` | `auto` (default: terminal/`COLORFGBG`, then OS) \| `dark` \| `light` |
 
 ```bash
 export RCT_REPOS="$HOME/Developer/play,$HOME/Code"

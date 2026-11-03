@@ -29,7 +29,7 @@ pub struct Config {
     pub pomodoro: u64,
     pub break_minutes: u64,
     pub mock: bool,
-    /// UI palette: dark (default), light, or auto (from COLORFGBG when possible).
+    /// UI palette: auto (default: terminal then OS), dark, or light.
     pub theme: ThemeMode,
 }
 
@@ -49,7 +49,7 @@ impl Default for Config {
             pomodoro: 25,
             break_minutes: 5,
             mock: false,
-            theme: ThemeMode::Dark,
+            theme: ThemeMode::Auto,
         }
     }
 }

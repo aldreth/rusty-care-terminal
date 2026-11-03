@@ -1,11 +1,13 @@
+use std::process::Command;
+
 use ratatui::style::{Color, Style};
 
-/// UI appearance. `Auto` picks dark vs light from the terminal when possible.
+/// UI appearance. `Auto` (default) follows the terminal/OS when `RCT_THEME` is unset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeMode {
-    #[default]
     Dark,
     Light,
+    #[default]
     Auto,
 }
 
@@ -23,7 +25,7 @@ impl ThemeMode {
         match self {
             Self::Dark => ResolvedTheme::Dark,
             Self::Light => ResolvedTheme::Light,
-            Self::Auto => detect_terminal_theme(),
+            Self::Auto => detect_preferred_theme(),
         }
     }
 
@@ -33,7 +35,6 @@ impl ThemeMode {
             ResolvedTheme::Light => Self::Dark,
         }
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,22 +128,179 @@ impl Theme {
     }
 }
 
-/// Best-effort light/dark detection via `COLORFGBG` (common in xterm-likes).
-fn detect_terminal_theme() -> ResolvedTheme {
-    if let Ok(v) = std::env::var("COLORFGBG") {
-        // Format: "fg;bg" where bg is a palette index 0–15 (or higher).
-        if let Some(bg) = v.split(';').next_back()
-            && let Ok(idx) = bg.trim().parse::<u8>()
-        {
-            // Light backgrounds are typically 7 / 15 (white) or similar high indices.
-            return if idx == 7 || idx >= 15 {
-                ResolvedTheme::Light
-            } else {
-                ResolvedTheme::Dark
-            };
-        }
+/// Prefer the terminal’s colors, then the desktop preference, then dark.
+fn detect_preferred_theme() -> ResolvedTheme {
+    if let Some(theme) = from_colorfgbg() {
+        return theme;
+    }
+    if let Some(theme) = from_os_preference() {
+        return theme;
     }
     ResolvedTheme::Dark
+}
+
+/// `COLORFGBG` is set by many terminals as `fg;bg` palette indices.
+fn from_colorfgbg() -> Option<ResolvedTheme> {
+    let v = std::env::var("COLORFGBG").ok()?;
+    let bg = v.split(';').next_back()?;
+    let idx = bg.trim().parse::<u8>().ok()?;
+    // Background 7 / 15 ≈ white/light; other common indices are dark.
+    Some(if idx == 7 || idx == 15 {
+        ResolvedTheme::Light
+    } else {
+        ResolvedTheme::Dark
+    })
+}
+
+fn from_os_preference() -> Option<ResolvedTheme> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(theme) = from_macos() {
+            return Some(theme);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(theme) = from_windows() {
+            return Some(theme);
+        }
+    }
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    {
+        if let Some(theme) = from_linux() {
+            return Some(theme);
+        }
+    }
+
+    // GTK_THEME / GTK2_RC_FILES often include "dark" when apps force a dark theme.
+    if let Ok(theme) = std::env::var("GTK_THEME")
+        && theme.to_ascii_lowercase().contains("dark")
+    {
+        return Some(ResolvedTheme::Dark);
+    }
+
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn from_macos() -> Option<ResolvedTheme> {
+    let output = Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().eq_ignore_ascii_case("Dark") {
+            return Some(ResolvedTheme::Dark);
+        }
+    }
+    // Missing key ⇒ Light on macOS.
+    Some(ResolvedTheme::Light)
+}
+
+#[cfg(target_os = "windows")]
+fn from_windows() -> Option<ResolvedTheme> {
+    let output = Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "AppsUseLightTheme",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.contains("0x1") {
+        Some(ResolvedTheme::Light)
+    } else if stdout.contains("0x0") {
+        Some(ResolvedTheme::Dark)
+    } else {
+        None
+    }
+}
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+fn from_linux() -> Option<ResolvedTheme> {
+    // GNOME / Cinnamon / COSMIC-style setting.
+    if let Ok(output) = Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "color-scheme"])
+        .output()
+        && output.status.success()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+        if stdout.contains("prefer-dark") {
+            return Some(ResolvedTheme::Dark);
+        }
+        if stdout.contains("prefer-light") {
+            return Some(ResolvedTheme::Light);
+        }
+        // "default" is ambiguous — fall through to portal / gtk-theme.
+    }
+
+    if let Ok(output) = Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "gtk-theme"])
+        .output()
+        && output.status.success()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+        if stdout.contains("dark") {
+            return Some(ResolvedTheme::Dark);
+        }
+    }
+
+    // XDG Desktop Portal appearance (works across desktops when a portal is running).
+    if let Ok(output) = Command::new("dbus-send")
+        .args([
+            "--session",
+            "--print-reply=literal",
+            "--dest=org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Settings.ReadOne",
+            "string:org.freedesktop.appearance",
+            "string:color-scheme",
+        ])
+        .output()
+        && output.status.success()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Reply looks like: `   variant       uint32 1` (1=dark, 2=light, 0=no pref).
+        if let Some(theme) = parse_portal_color_scheme(&stdout) {
+            return Some(theme);
+        }
+    }
+
+    None
+}
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+fn parse_portal_color_scheme(stdout: &str) -> Option<ResolvedTheme> {
+    for token in stdout.split_whitespace() {
+        match token {
+            "1" => return Some(ResolvedTheme::Dark),
+            "2" => return Some(ResolvedTheme::Light),
+            "0" => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -161,5 +319,29 @@ mod tests {
     fn toggle_flips_resolved() {
         assert_eq!(ThemeMode::Dark.toggle(), ThemeMode::Light);
         assert_eq!(ThemeMode::Light.toggle(), ThemeMode::Dark);
+    }
+
+    #[test]
+    fn default_mode_is_auto() {
+        assert_eq!(ThemeMode::default(), ThemeMode::Auto);
+    }
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    #[test]
+    fn parses_portal_reply() {
+        assert_eq!(
+            parse_portal_color_scheme("   variant       uint32 1"),
+            Some(ResolvedTheme::Dark)
+        );
+        assert_eq!(
+            parse_portal_color_scheme("variant uint32 2"),
+            Some(ResolvedTheme::Light)
+        );
+        assert_eq!(parse_portal_color_scheme("variant uint32 0"), None);
     }
 }
