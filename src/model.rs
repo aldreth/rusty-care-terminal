@@ -54,6 +54,7 @@ pub struct CareMessage {
     pub text: String,
     #[allow(dead_code)]
     pub fetched_at: DateTime<Local>,
+    #[allow(dead_code)]
     pub from_mock: bool,
 }
 
@@ -80,6 +81,7 @@ pub struct WeatherSnapshot {
     pub temperature: String,
     pub high_low: String,
     pub wind: String,
+    #[allow(dead_code)]
     pub fetched_at: DateTime<Local>,
 }
 

@@ -95,6 +95,7 @@ pub struct App {
     pub scroll_week: u16,
     /// Which commit list receives j/k scrolling: true = today, false = week.
     pub scroll_today_focus: bool,
+    pub show_help: bool,
 }
 
 impl App {
@@ -115,6 +116,7 @@ impl App {
             scroll_today: 0,
             scroll_week: 0,
             scroll_today_focus: true,
+            show_help: false,
         };
         app.refresh();
         app
@@ -146,46 +148,8 @@ impl App {
             }
         }
 
-        let repo_note = if self.config.repos.is_empty() {
-            "no repos configured (set RCT_REPOS or --repos)"
-        } else {
-            "git scanned"
-        };
-
-        let live = self.care.iter().filter(|m| !m.from_mock).count();
-        let care_note = if self.config.mock {
-            "care mock"
-        } else if live == 0 {
-            "care offline"
-        } else {
-            "care rss"
-        };
-
-        let weather_note = if self.config.weather.is_none() {
-            ""
-        } else if self.weather.is_some() {
-            " · wx ok"
-        } else {
-            " · wx err"
-        };
-
-        let warn_note = if self.warnings.is_empty() {
-            String::new()
-        } else {
-            format!(" · {} warn", self.warnings.len())
-        };
-
-        let updated = Local::now().format("%H:%M").to_string();
-        let pomo_hint = if self.pomodoro.active {
-            format!(" · pomo {}", self.pomodoro.mmss())
-        } else {
-            String::new()
-        };
-        self.status = format!(
-            "{repo_note} · today {} · week {} · {care_note}{weather_note}{warn_note}{pomo_hint} · upd {updated} · q/r/t/p",
-            self.commits.today_count(),
-            self.commits.week_count()
-        );
+        // Keep the footer short: shortcuts + a single warning if something failed.
+        self.status = "q quit · r refresh · t theme · h help · Tab/j/k scroll · p pomo".into();
         self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.last_refresh_at = Local::now();
@@ -205,8 +169,27 @@ impl App {
                 return AppAction::Continue;
             }
             match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return AppAction::Quit,
-                KeyCode::Char('r') => self.refresh(),
+                KeyCode::Char('q') => {
+                    if self.show_help {
+                        self.show_help = false;
+                    } else {
+                        return AppAction::Quit;
+                    }
+                }
+                KeyCode::Esc => {
+                    if self.show_help {
+                        self.show_help = false;
+                    } else {
+                        return AppAction::Quit;
+                    }
+                }
+                KeyCode::Char('h') => {
+                    self.show_help = !self.show_help;
+                }
+                KeyCode::Char('r') => {
+                    self.show_help = false;
+                    self.refresh();
+                }
                 KeyCode::Tab => {
                     self.scroll_today_focus = !self.scroll_today_focus;
                 }

@@ -159,10 +159,7 @@ fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<Co
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let repo_name = repo
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| repo.display().to_string());
+    let repo_label = display_repo_path(repo);
 
     let mut entries = Vec::new();
     for line in stdout.lines() {
@@ -193,7 +190,7 @@ fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<Co
 
         let when = parse_git_date(parts[1]).unwrap_or_else(Local::now);
         entries.push(CommitEntry {
-            repo: repo_name.clone(),
+            repo: repo_label.clone(),
             hash: parts[0].to_string(),
             author: author_name.to_string(),
             subject: subject.to_string(),
@@ -201,6 +198,17 @@ fn log_commits(repo: &Path, since: &str, identities: &[String]) -> Result<Vec<Co
         });
     }
     Ok(entries)
+}
+
+/// Prefer `~/…` for paths under `$HOME` so headings stay short.
+fn display_repo_path(repo: &Path) -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        let home = PathBuf::from(home);
+        if let Ok(rest) = repo.strip_prefix(&home) {
+            return format!("~/{}", rest.display());
+        }
+    }
+    repo.display().to_string()
 }
 
 /// True if any identity matches author, committer, or a Co-authored-by trailer.

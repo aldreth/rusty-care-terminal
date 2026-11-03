@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -133,7 +132,8 @@ fn run(
 fn setup_terminal(title: &str) -> anyhow::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
+    // No mouse capture — lets the terminal select/copy text (hashes, etc.).
+    execute!(out, EnterAlternateScreen)?;
     let _ = execute!(out, crossterm::terminal::SetTitle(title));
     let backend = CrosstermBackend::new(out);
     Terminal::new(backend).context("creating terminal")
@@ -141,11 +141,7 @@ fn setup_terminal(title: &str) -> anyhow::Result<Terminal<CrosstermBackend<io::S
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> anyhow::Result<()> {
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
 }

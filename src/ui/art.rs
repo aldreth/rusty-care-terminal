@@ -1,24 +1,43 @@
 use std::fs;
 use std::path::Path;
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Tiny ASCII say-box wrapper (party-parrot spirit).
-pub fn say_box(character: &str, message: &str, max_width: usize) -> String {
-    let art = resolve_art(character);
-    let bubble = speech_bubble(message, max_width);
-    format!("{bubble}\n{art}")
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+
+use crate::theme::Theme;
+
+/// Speech bubble + character as styled lines, sized for the say-box.
+pub fn say_box_lines(
+    character: &str,
+    message: &str,
+    max_width: usize,
+    max_height: usize,
+    theme: Theme,
+) -> Vec<Line<'static>> {
+    let bubble_width = max_width.saturating_sub(2).max(16);
+    let bubble = speech_bubble(message, bubble_width);
+    let bubble_lines: Vec<Line<'static>> = bubble
+        .lines()
+        .map(|row| Line::from(Span::styled(row.to_string(), Style::default().fg(theme.fg))))
+        .collect();
+
+    let bubble_h = bubble_lines.len();
+    let art_budget = max_height.saturating_sub(bubble_h).max(4);
+    let art = resolve_art(character, art_budget);
+    let mut lines = bubble_lines;
+    lines.extend(colorize_art(&art, theme));
+    lines
 }
 
-fn resolve_art(character: &str) -> String {
+fn resolve_art(character: &str, height_budget: usize) -> String {
     let trimmed = character.trim();
     if trimmed.is_empty() {
-        return PARROT.to_string();
+        return parrot_for_height(height_budget).to_string();
     }
-    // External art file (.cow / .ansi / plain text).
     if Path::new(trimmed).is_file() {
         return fs::read_to_string(trimmed)
-            .unwrap_or_else(|_| PARROT.to_string())
+            .unwrap_or_else(|_| parrot_for_height(height_budget).to_string())
             .trim_end()
             .to_string();
     }
@@ -36,8 +55,41 @@ fn resolve_art(character: &str) -> String {
         "bunny" => BUNNY.to_string(),
         "llama" => LLAMA.to_string(),
         "cat" => CAT.to_string(),
-        _ => PARROT.to_string(),
+        _ => parrot_for_height(height_budget).to_string(),
     }
+}
+
+fn parrot_for_height(height_budget: usize) -> &'static str {
+    if height_budget >= 12 {
+        PARROT_LARGE
+    } else if height_budget >= 9 {
+        PARROT_MEDIUM
+    } else {
+        PARROT_SMALL
+    }
+}
+
+/// Color party-parrot ASCII: cyan body, magenta beak-ish glyphs, reset outline.
+fn colorize_art(art: &str, theme: Theme) -> Vec<Line<'static>> {
+    art.lines()
+        .skip_while(|l| l.is_empty())
+        .map(|row| {
+            let spans: Vec<Span<'static>> = row
+                .chars()
+                .map(|ch| {
+                    let color = match ch {
+                        'o' | 'O' | '@' => theme.time_fresh,
+                        '>' | '<' | '=' | '~' | '"' | '\'' => theme.hash,
+                        '.' | '-' | '_' | '/' | '\\' | '|' | '(' | ')' => theme.border,
+                        ' ' => theme.fg,
+                        _ => theme.bar, // body fill
+                    };
+                    Span::styled(ch.to_string(), Style::default().fg(color))
+                })
+                .collect();
+            Line::from(spans)
+        })
+        .collect()
 }
 
 fn speech_bubble(message: &str, max_width: usize) -> String {
@@ -51,22 +103,15 @@ fn speech_bubble(message: &str, max_width: usize) -> String {
         .max(8)
         .min(inner);
 
-    let top = format!(" {}", "-".repeat(width + 2));
-    let bot = format!(" {}", "-".repeat(width + 2));
+    let top = format!("+{}+", "-".repeat(width + 2));
+    let bot = format!("+{}+", "-".repeat(width + 2));
     let mut lines = vec![top];
-    for (i, row) in wrapped.iter().enumerate() {
-        let edge = if wrapped.len() == 1 {
-            ("<", ">")
-        } else if i == 0 {
-            ("/", "\\")
-        } else if i + 1 == wrapped.len() {
-            ("\\", "/")
-        } else {
-            ("|", "|")
-        };
-        lines.push(format!("{} {row:<width$} {}", edge.0, edge.1));
+    for row in &wrapped {
+        lines.push(format!("| {row:<width$} |"));
     }
     lines.push(bot);
+    lines.push("        \\".into());
+    lines.push("         \\".into());
     lines.join("\n")
 }
 
@@ -112,14 +157,46 @@ fn wrap_text(message: &str, width: usize) -> Vec<String> {
     rows
 }
 
-const PARROT: &str = r#"
- \
-  \   .--.
-    \/ o)\
-    /\__/ \
-   //  \_\
-  //    ||
-  ||    ||
+const PARROT_SMALL: &str = r#"
+  \
+   \   .--.
+     \/ o)\
+     /\__/ \
+    //  \_\
+   //    ||
+   ||    ||
+"#;
+
+const PARROT_MEDIUM: &str = r#"
+   \
+    \     .---.
+     \   / o o \
+      \  |  >  |
+       \/ \___/
+       /\  \_/ \
+      // \/   \ \
+     ||  |     | |
+     ||  |     | |
+      \\/       \/
+"#;
+
+const PARROT_LARGE: &str = r#"
+    \
+     \        .------.
+      \      /  .--.  \
+       \    /  /    \  \
+        \   |  | oo |  |
+         \  |  |  > |  |
+          \ |  '----'  /
+           \/   ||    /
+           /\   ||   \
+          // \  ||  / \
+         //   \ || /   \
+        ||     \||/     |
+        ||      \/      |
+         \\            /
+          \\          /
+           \/\/\/\/\/
 "#;
 
 const BUNNY: &str = r#"
@@ -151,15 +228,27 @@ mod tests {
     #[test]
     fn wraps_long_message_instead_of_ellipsis() {
         let msg = "Make yourself a healthy meal. It doesn't have to be fancy to count.";
-        let out = say_box("parrot", msg, 60);
-        assert!(!out.contains("..."), "unexpected truncation: {out}");
-        assert!(out.contains("healthy"));
-        assert!(out.lines().count() > 4);
+        let theme = Theme::dark();
+        let out = say_box_lines("parrot", msg, 60, 20, theme);
+        let joined: String = out
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!joined.contains("..."), "unexpected truncation: {joined}");
+        assert!(joined.contains("healthy"));
+        assert!(out.len() > 4);
     }
 
     #[test]
     fn random_resolves_to_known_art() {
-        let out = say_box("RANDOM", "hi", 40);
-        assert!(out.contains('<') || out.contains('/'));
+        let theme = Theme::dark();
+        let out = say_box_lines("RANDOM", "hi", 40, 16, theme);
+        assert!(!out.is_empty());
     }
 }

@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{BarChart, Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{BarChart, Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::{App, PomodoroPhase};
 use crate::theme::Theme;
@@ -48,22 +48,29 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_today(frame, app, theme, top[0]);
     draw_chart(frame, app, theme, top[1]);
     draw_weather(frame, app, theme, side[0]);
-    draw_care_panel(frame, app, theme, 1, "💖 care", side[1]);
-    draw_care_panel(frame, app, theme, 2, "💬 care", side[2]);
+    draw_care_panel(frame, app, theme, 1, "💖", side[1]);
+    draw_care_panel(frame, app, theme, 2, "💬", side[2]);
     draw_week(frame, app, theme, bottom[0]);
     draw_say_box(frame, app, theme, bottom[1]);
     draw_status(frame, app, theme, root[1]);
+
+    if app.show_help {
+        draw_help_modal(frame, theme);
+    }
 }
 
 fn border_block(title: &str, theme: Theme) -> Block<'_> {
-    Block::default()
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_style(theme.border_style())
-        .style(theme.root_style())
-        .title(Span::styled(
+        .style(theme.root_style());
+    if !title.is_empty() {
+        block = block.title(Span::styled(
             title,
             theme.title_style().add_modifier(Modifier::BOLD),
-        ))
+        ));
+    }
+    block
 }
 
 fn draw_today(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -72,16 +79,11 @@ fn draw_today(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     } else {
         "tiny commit bot is looking for tiny commits!"
     };
-    let title = if app.scroll_today_focus {
-        "📝 Today · j/k"
-    } else {
-        "📝 Today"
-    };
     let lines = commit_lines(&app.commits.today, empty, theme);
     let widget = Paragraph::new(lines)
-        .block(border_block(title, theme))
+        .block(border_block("📝 Today", theme))
         .style(theme.root_style())
-        .wrap(Wrap { trim: true })
+        .wrap(Wrap { trim: false })
         .scroll((app.scroll_today, 0));
     frame.render_widget(widget, area);
 }
@@ -92,20 +94,16 @@ fn draw_week(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     } else {
         "no commits this week yet — soft start is fine"
     };
-    let title = if !app.scroll_today_focus {
-        "📝 Week · j/k"
-    } else {
-        "📝 Week"
-    };
     let lines = commit_lines(&app.commits.week, empty, theme);
     let widget = Paragraph::new(lines)
-        .block(border_block(title, theme))
+        .block(border_block("📝 Week", theme))
         .style(theme.root_style())
-        .wrap(Wrap { trim: true })
+        .wrap(Wrap { trim: false })
         .scroll((app.scroll_week, 0));
     frame.render_widget(widget, area);
 }
 
+/// Group by repo heading (magenta path), then `hash - subject (ago)` lines.
 fn commit_lines(
     entries: &[crate::model::CommitEntry],
     empty: &str,
@@ -117,30 +115,39 @@ fn commit_lines(
             theme.muted_style(),
         ))];
     }
-    entries
-        .iter()
-        .take(40)
-        .map(|c| {
-            let ago = relative_time(c.when);
-            let time_style = Style::default().fg(time_color(theme, c.when));
-            Line::from(vec![
-                Span::styled(format!("{} ", c.repo), Style::default().fg(theme.hash)),
-                Span::styled(
-                    format!("{} ", short_hash(&c.hash)),
-                    Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!("{} ", truncate(&c.subject, 52)),
-                    Style::default().fg(theme.subject),
-                ),
-                Span::styled(format!("({ago})"), time_style),
-            ])
-        })
-        .collect()
+
+    let mut lines = Vec::new();
+    let mut last_repo: Option<&str> = None;
+    for c in entries.iter().take(60) {
+        if last_repo != Some(c.repo.as_str()) {
+            if last_repo.is_some() {
+                lines.push(Line::from(""));
+            }
+            lines.push(Line::from(Span::styled(
+                c.repo.clone(),
+                Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+            )));
+            last_repo = Some(c.repo.as_str());
+        }
+        let ago = relative_time(c.when);
+        let time_style = Style::default().fg(time_color(theme, c.when));
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{} ", short_hash(&c.hash)),
+                Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("- ".to_string(), Style::default().fg(theme.muted)),
+            Span::styled(
+                format!("{} ", truncate(&c.subject, 56)),
+                Style::default().fg(theme.subject),
+            ),
+            Span::styled(format!("({ago})"), time_style),
+        ]));
+    }
+    lines
 }
 
 fn short_hash(hash: &str) -> &str {
-    // Git hashes are ASCII hex; byte slicing is fine.
     &hash[..hash.len().min(7)]
 }
 
@@ -172,14 +179,34 @@ fn time_color(theme: Theme, when: DateTime<Local>) -> ratatui::style::Color {
 }
 
 fn draw_chart(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
+    let block = border_block("Commits", theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     let today = app.commits.today_count();
     let week = app.commits.week_count();
     let data = [("today", today), ("week", week)];
+
+    // Fat bars that fill most of the pane, centered horizontally.
+    let bar_width = ((inner.width.saturating_sub(6)) / 3).clamp(5, 14);
+    let bar_gap = (bar_width / 2).clamp(2, 5);
+    let chart_w = bar_width
+        .saturating_mul(2)
+        .saturating_add(bar_gap)
+        .saturating_add(2)
+        .min(inner.width);
+    let chart_h = inner.height.saturating_sub(0).max(3);
+    let chart_area = Rect {
+        x: inner.x + inner.width.saturating_sub(chart_w) / 2,
+        y: inner.y,
+        width: chart_w,
+        height: chart_h,
+    };
+
     let chart = BarChart::default()
-        .block(border_block("Commits", theme))
         .data(&data)
-        .bar_width(5)
-        .bar_gap(2)
+        .bar_width(bar_width)
+        .bar_gap(bar_gap)
         .bar_style(Style::default().fg(theme.bar))
         .value_style(
             Style::default()
@@ -187,7 +214,7 @@ fn draw_chart(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )
         .label_style(theme.muted_style());
-    frame.render_widget(chart, area);
+    frame.render_widget(chart, chart_area);
 }
 
 fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -199,11 +226,6 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     } else if let Some(w) = &app.weather {
         vec![
             Line::from(Span::styled(
-                w.place.clone(),
-                theme.accent_style().add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(Span::styled(
                 format!("{} · {}", w.temperature, w.summary),
                 Style::default().fg(theme.fg),
             )),
@@ -211,16 +233,12 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 w.high_low.clone(),
                 Style::default().fg(theme.fg),
             )),
+            Line::from(Span::styled(w.place.clone(), theme.muted_style())),
             Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
-            Line::from(Span::styled(
-                format!("updated {}", w.fetched_at.format("%H:%M")),
-                theme.muted_style(),
-            )),
         ]
     } else if app.config.weather.is_some() {
         vec![
             Line::from(Span::styled("weather unavailable", theme.muted_style())),
-            Line::from(""),
             Line::from(Span::styled(
                 "Take a breath. Look out a window.",
                 Style::default().fg(theme.fg),
@@ -228,23 +246,16 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         ]
     } else {
         vec![
-            Line::from(Span::styled("somewhere cozy", theme.accent_style())),
-            Line::from(""),
             Line::from(Span::styled(
                 "Set RCT_WEATHER or --weather",
                 Style::default().fg(theme.fg),
             )),
-            Line::from(Span::styled("(city name or lat,lon)", theme.muted_style())),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Take a breath. Look out a window.",
-                Style::default().fg(theme.fg),
-            )),
+            Line::from(Span::styled("(city or lat,lon)", theme.muted_style())),
         ]
     };
 
     let widget = Paragraph::new(lines)
-        .block(border_block("☀️ weather", theme))
+        .block(border_block("☀️", theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
@@ -258,25 +269,55 @@ fn draw_care_panel(
     title: &str,
     area: Rect,
 ) {
-    let (label, body) = match app.care.get(index) {
-        Some(msg) if app.loading && msg.text.is_empty() => ("…".into(), "loading care…".into()),
-        Some(msg) => {
-            let tag = if msg.from_mock { "mock" } else { "live" };
-            (format!("{} · {tag}", msg.source_label), msg.text.clone())
+    let mut lines = Vec::new();
+    match app.care.get(index) {
+        Some(msg) if app.loading && msg.text.is_empty() => {
+            lines.push(Line::from(Span::styled(
+                "loading care…",
+                theme.muted_style(),
+            )));
         }
-        None if app.loading => ("…".into(), "loading care…".into()),
-        None => ("—".into(), "Hi! You're doing great!!!".into()),
+        Some(msg) => {
+            if let Some(label) = friendly_care_label(&msg.source_label) {
+                lines.push(Line::from(Span::styled(label, theme.accent_style())));
+                lines.push(Line::from(""));
+            }
+            lines.push(Line::from(Span::styled(
+                msg.text.clone(),
+                Style::default().fg(theme.fg),
+            )));
+        }
+        None if app.loading => {
+            lines.push(Line::from(Span::styled(
+                "loading care…",
+                theme.muted_style(),
+            )));
+        }
+        None => {
+            lines.push(Line::from(Span::styled(
+                "Hi! You're doing great!!!",
+                Style::default().fg(theme.fg),
+            )));
+        }
     };
-    let lines = vec![
-        Line::from(Span::styled(label, theme.accent_style())),
-        Line::from(""),
-        Line::from(Span::styled(body, Style::default().fg(theme.fg))),
-    ];
+
     let widget = Paragraph::new(lines)
         .block(border_block(title, theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
+}
+
+/// Keep `@user@host`; drop raw feed URLs and live/mock tags.
+fn friendly_care_label(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return None;
+    }
+    Some(trimmed.to_string())
 }
 
 fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -290,32 +331,22 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         .first()
         .map(|m| m.text.as_str())
         .unwrap_or("Hi! You're doing great!!!");
-    let source = app
-        .care
-        .first()
-        .map(|m| {
-            let tag = if m.from_mock { "mock" } else { "rss" };
-            format!("{} · {tag}", m.source_label)
-        })
-        .unwrap_or_else(|| "care".into());
 
-    let max_width = area.width.saturating_sub(2) as usize;
-    let art_text = art::say_box(&app.config.say_box, msg, max_width);
-    let mut lines: Vec<Line<'static>> = vec![
-        Line::from(Span::styled(source, theme.accent_style())),
-        Line::from(""),
-    ];
-    lines.extend(art_text.lines().map(|row| {
-        Line::from(Span::styled(
-            row.to_string(),
-            Style::default().fg(theme.bar),
-        ))
-    }));
+    let block = border_block("", theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines = art::say_box_lines(
+        &app.config.say_box,
+        msg,
+        inner.width as usize,
+        inner.height as usize,
+        theme,
+    );
     let widget = Paragraph::new(lines)
-        .block(border_block("✨ say", theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: false });
-    frame.render_widget(widget, area);
+    frame.render_widget(widget, inner);
 }
 
 fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -344,12 +375,12 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "s start/pause · e reset · u/U work± · b/B break± · p exit",
+            "s start/pause · e reset · u/U work± · b/B break± · p exit · h help",
             theme.muted_style(),
         )),
     ];
     let widget = Paragraph::new(lines)
-        .block(border_block("🍅 pomodoro", theme))
+        .block(border_block("🍅", theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
@@ -362,16 +393,68 @@ fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         text = format!("{text} · {run} {}", app.pomodoro.mmss());
     }
     if let Some(err) = &app.error {
-        let short = truncate(err, 48);
-        if !text.contains(&short) {
-            text = format!("{text} · {short}");
-        }
+        let short = truncate(err, 40);
+        text = format!("{text} · {short}");
     }
     if app.loading {
         text = format!("loading… · {text}");
     }
     let widget = Paragraph::new(text).style(theme.muted_style());
     frame.render_widget(widget, area);
+}
+
+fn draw_help_modal(frame: &mut Frame, theme: Theme) {
+    let area = centered_rect(56, 18, frame.area());
+    frame.render_widget(Clear, area);
+
+    let lines = vec![
+        Line::from(Span::styled(
+            "help",
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        help_line("q / Esc", "quit (Esc closes help first)", theme),
+        help_line("h", "toggle this help", theme),
+        help_line("r", "refresh git / care / weather", theme),
+        help_line("t", "toggle dark / light accents", theme),
+        help_line("Tab", "focus Today vs Week list", theme),
+        help_line("j / k", "scroll focused commit list", theme),
+        help_line("p", "pomodoro in the say-box", theme),
+        help_line("s / e", "pomo start-pause / reset", theme),
+        help_line("u U b B", "pomo work± / break±", theme),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Tip: mouse capture is off — select text to copy hashes.",
+            theme.muted_style(),
+        )),
+    ];
+
+    let widget = Paragraph::new(lines)
+        .block(border_block("h", theme))
+        .style(theme.root_style())
+        .wrap(Wrap { trim: false });
+    frame.render_widget(widget, area);
+}
+
+fn help_line(key: &str, desc: &str, theme: Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {key:<10}"),
+            Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(desc.to_string(), Style::default().fg(theme.fg)),
+    ])
+}
+
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -408,5 +491,59 @@ mod tests {
             time_color(theme, now - chrono::Duration::days(2)),
             theme.muted
         );
+    }
+
+    #[test]
+    fn friendly_label_keeps_acct_drops_url() {
+        assert_eq!(
+            friendly_care_label("@selfcaregentle@hachyderm.io").as_deref(),
+            Some("@selfcaregentle@hachyderm.io")
+        );
+        assert_eq!(friendly_care_label("https://hachyderm.io/@x.rss"), None);
+    }
+
+    #[test]
+    fn commit_lines_group_by_repo() {
+        let theme = Theme::dark();
+        let now = Local::now();
+        let entries = vec![
+            crate::model::CommitEntry {
+                repo: "~/Code/a".into(),
+                hash: "aaaaaaa".into(),
+                author: "me".into(),
+                subject: "one".into(),
+                when: now,
+            },
+            crate::model::CommitEntry {
+                repo: "~/Code/a".into(),
+                hash: "bbbbbbb".into(),
+                author: "me".into(),
+                subject: "two".into(),
+                when: now,
+            },
+            crate::model::CommitEntry {
+                repo: "~/Code/b".into(),
+                hash: "ccccccc".into(),
+                author: "me".into(),
+                subject: "three".into(),
+                when: now,
+            },
+        ];
+        let lines = commit_lines(&entries, "empty", theme);
+        let text: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert_eq!(text[0], "~/Code/a");
+        assert!(text[1].starts_with("aaaaaaa"));
+        assert!(!text[1].contains("~/Code"));
+        assert!(text.iter().any(|l| l == "~/Code/b"));
+        let b_idx = text.iter().position(|l| l == "~/Code/b").unwrap();
+        assert!(text[b_idx + 1].starts_with("ccccccc"));
     }
 }
