@@ -37,10 +37,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Toolchain version comes from rust-toolchain.toml only.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.99.1"
+        run: rustup toolchain install
 
       - name: Run release-plz
         uses: release-plz/action@v0.5
@@ -67,10 +66,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Toolchain version comes from rust-toolchain.toml only.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.99.1"
+        run: rustup toolchain install
 
       - name: Run release-plz
         uses: release-plz/action@v0.5

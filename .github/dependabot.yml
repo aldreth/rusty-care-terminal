@@ -1,6 +1,6 @@
-# Dependabot keeps Cargo + Actions deps current.
-# Skipping Mergify from Orhun's 2023 blog — merge Dependabot PRs manually
-# (or enable GitHub's native auto-merge / a later bot if desired).
+# Dependabot keeps Cargo + Actions deps current. Merge its PRs manually
+# (Mergify from Orhun's 2023 blog is skipped). `chore(deps)` commits are
+# left out of the changelog by cliff.toml.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -8,9 +8,19 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
