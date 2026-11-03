@@ -1,4 +1,4 @@
-//! Say-box characters as hand-pixelled sprites, shown with Unicode half-blocks (▀/▄).
+//! Say-box characters as hand-pixelled sprites, shown with Unicode half-blocks (▀/▄/█).
 //!
 //! Art is drawn at a fixed native size and only scaled by **integer** factors (or
 //! shrunk to fit). That keeps a chunky computery look instead of stretching tiny
@@ -7,6 +7,7 @@
 //! Map legend:
 //! `.` empty · `B` body · `D` body shade · `W` white · `K` black · `M` magenta
 //! `Y` yellow · `R` red · `O` orange · `C` cream · `N` brown · `G` gray · `P` pink
+//! `A` cream shade · `H` gray shade
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -20,7 +21,6 @@ impl Rgb {
     }
 }
 
-// Party-parrot / creature palette — saturated, terminal-friendly.
 const CYAN: Rgb = Rgb(64, 212, 232);
 const CYAN_D: Rgb = Rgb(28, 150, 180);
 const WHITE: Rgb = Rgb(248, 248, 252);
@@ -56,87 +56,88 @@ fn map_char(ch: char, body: Rgb, shade: Rgb) -> Option<Rgb> {
     }
 }
 
-/// Classic side-view party parrot — native ~30×24 px, chunky at 1×/2×.
+/// Side-view party parrot: one eye, chunky beak sticking out, wing, perch feet.
 const PARROT: &[&str] = &[
-    "..............................",
-    "..........BBBBBB..............",
-    "........BBBBBBBBBB............",
-    ".......BBBBBBBBBBBB...........",
-    "......BBBWWBBWWBBBBB..........",
-    "......BBBKWBBKWBBBBB..........",
-    "......BBBBBBMMBBBBBB..........",
-    ".......BBBBBMMMOYBBB..........",
-    "........BBBBMMMOYYBB..........",
-    ".........BBBMMMYYBB...........",
-    "........BBBBBBBBBBBB..........",
-    ".......BBBBBBBBBBBBBB.........",
-    "......BBBBBBDDBBBBBBBB........",
-    ".....BBBBBBBDDDBBBBBBBB.......",
-    ".....BBBBBBDDDDBBBBBBBB.......",
-    "......BBBBBDDDBBBBBBBB........",
-    ".......BBBBBBBBBBBBBB.........",
-    "........BBBBBBBBBBBB..........",
-    ".........BBBBBBBBBB...........",
-    "..........BBDRRDBB............",
-    "...........B.RR.B.............",
-    "...........N....N.............",
-    "..............................",
-    "..............................",
+    "............................",
+    ".......BBBBBBB..............",
+    ".....BBBBBBBBBBB............",
+    "....BBBBBBBBBBBBB...........",
+    "....BBBWWBBBBBBBBB..........",
+    "....BBBKWBBBBBBBBB..........",
+    "....BBBBBBMMBBBBBB..........",
+    ".....BBBBBMMMOYBBB..........",
+    "......BBBBMMMOYYBB..........",
+    ".......BBBMMMYYYB...........",
+    "......BBBBBBBBBBBB..........",
+    ".....BBBBBBBBBBBBBB.........",
+    "....BBBBBBDDDBBBBBBB........",
+    "...BBBBBBBDDDBBBBBBBB.......",
+    "...BBBBBBBDDDBBBBBBBB.......",
+    "....BBBBBBDDDBBBBBBB........",
+    ".....BBBBBBBBBBBBBB.........",
+    "......BBBBBBBBBBBB..........",
+    ".......BBBRRRBBB............",
+    "........B.R..R.B............",
+    "........N......N............",
 ];
 
+/// Front bunny with long ears, round face, pink nose, small chest.
 const BUNNY: &[&str] = &[
-    "....................",
-    "....BB......BB......",
-    "...BPPB....BPPB.....",
-    "...BPPB....BPPB.....",
-    "...BPPB....BPPB.....",
-    "....BBB....BBB......",
-    ".....BBBBBBBB.......",
-    "....BBWWBBWWBB......",
-    "....BBKWBBKWBB......",
-    "....BBBBPBBBBB......",
-    "....BBBBBBBBBB......",
-    ".....BBAAAAABB......",
-    "......BBAABB........",
-    ".......BBBB.........",
-    "....................",
-    "....................",
+    "......................",
+    "...BB........BB.......",
+    "..BPPB......BPPB......",
+    "..BPPB......BPPB......",
+    "..BPPB......BPPB......",
+    "..BPPB......BPPB......",
+    "...BBB......BBB.......",
+    "....BBBBBBBBBB........",
+    "...BBWWBBBBWWBB.......",
+    "...BBKWBBBBKWBB.......",
+    "...BBBBPPBBBBBB.......",
+    "...BBBBBBBBBBBB.......",
+    "....BBBAAAABBB........",
+    ".....BBBBBABB.........",
+    "......BBBBBB..........",
 ];
 
+/// Side llama: tall ears, one eye, cream muzzle, long neck, body, four legs.
 const LLAMA: &[&str] = &[
-    "......................",
-    ".......CCCC...........",
-    "......CWWWWC..........",
-    "......CWKWCC..........",
-    "......CCCCCCCC........",
-    ".....CCCCCCCCCC.......",
-    "....CCC....CCCCC......",
-    "....CCC.....CCCC......",
-    "....CAA......AAC......",
-    "....CAA......AAC......",
-    "....CAA......AAC......",
-    "....CAA......AAC......",
-    "....CN........NC......",
-    "....CN........NC......",
-    ".....N........N.......",
-    "......................",
+    "........................",
+    ".............B...B......",
+    ".............B...B......",
+    "............BBBBBBB.....",
+    "...........BBWWBBBBB....",
+    "...........BBKWBBBBBK...",
+    "...........BBBBBBBBB....",
+    "............BBBBBBB.....",
+    ".............BBBB.......",
+    ".............BBB........",
+    ".............BBB........",
+    ".............BBB........",
+    ".............BBB........",
+    "......BBBBBBBBBBB.......",
+    ".....BBBBBBBBBBBBB......",
+    "....BBBBADDDDABBBBB.....",
+    "....BB..BB..BB..BB......",
+    "....BB..BB..BB..BB......",
+    "....NN..NN..NN..NN......",
 ];
 
+/// Front cat: tall triangle ears, round head, nose, whiskers.
 const CAT: &[&str] = &[
     "......................",
-    "...G..............G...",
-    "..GHG............GHG..",
-    "..GHHG..........GHHG..",
-    "...GHHHHHHHHHHHHHG....",
-    "..GHHWWHHHHHHWWHHG....",
-    "..GHHKWHHHHHHWKHHG....",
-    "..GHHHHHMMMHHHHHHG....",
-    "..GHHHHHHHHHHHHHHG....",
-    "...GHHHHHHHHHHHHG.....",
-    "....GGHHHHHHHHGG......",
-    "......GGGGGGGG........",
-    "......................",
-    "......................",
+    "..G............G......",
+    ".GHG..........GHG.....",
+    ".GHHG........GHHG.....",
+    ".GHHHG......GHHHG.....",
+    "..GHHHHHHHHHHHHG......",
+    ".GHHWWHHHHHHWWHHG.....",
+    ".GHHKWHHHHHHWKHHG.....",
+    "G.G.HHHHMMHHHH.G.G....",
+    ".GHHHHHHHHHHHHHHG.....",
+    "..GHHHHHHHHHHHHG......",
+    "...GGHHHHHHHHGG.......",
+    ".....GGGGGGGG.........",
 ];
 
 pub fn sprite_lines(name: &str, max_cols: usize, max_rows: usize) -> Vec<Line<'static>> {
@@ -179,7 +180,6 @@ fn fit_size(src_w: usize, src_h: usize, max_cols: usize, max_px_h: usize) -> (us
     let up_h = max_px_h / src_h;
     let up = up_w.min(up_h);
     if up >= 1 {
-        // Cap at 3× so a huge panel stays chunky, not a soft blob.
         let up = up.min(3);
         return (src_w * up, src_h * up);
     }
@@ -200,7 +200,6 @@ fn scale_pixels(
     if tw == sw && th == sh {
         return src.to_vec();
     }
-    // Integer upscale: replicate pixels (crisp blocks).
     if tw.is_multiple_of(sw) && th.is_multiple_of(sh) {
         let sx = tw / sw;
         let sy = th / sh;
@@ -217,7 +216,6 @@ fn scale_pixels(
         }
         return out;
     }
-    // Shrink / non-integer: nearest neighbour.
     let mut out = vec![None; tw * th];
     for y in 0..th {
         let sy = y * sh / th;
@@ -251,10 +249,7 @@ fn halfblocks(pixels: &[Option<Rgb>], width: usize, height: usize) -> Vec<Line<'
 
 fn halfblock_span(top: Option<Rgb>, bot: Option<Rgb>) -> Span<'static> {
     match (top, bot) {
-        (Some(t), Some(b)) if t == b => {
-            // Full cell of one colour reads cleaner than ▀ with matching bg.
-            Span::styled("█", Style::default().fg(t.color()))
-        }
+        (Some(t), Some(b)) if t == b => Span::styled("█", Style::default().fg(t.color())),
         (Some(t), Some(b)) => Span::styled("▀", Style::default().fg(t.color()).bg(b.color())),
         (Some(t), None) => Span::styled("▀", Style::default().fg(t.color())),
         (None, Some(b)) => Span::styled("▄", Style::default().fg(b.color())),
@@ -337,9 +332,17 @@ mod tests {
     }
 
     #[test]
+    fn all_creatures_render() {
+        for name in ["parrot", "bunny", "llama", "cat"] {
+            let lines = sprite_lines(name, 36, 12);
+            assert!(!lines.is_empty(), "{name} empty");
+        }
+    }
+
+    #[test]
     fn integer_upscale_keeps_aspect() {
         let (w, h) = fit_size(10, 8, 40, 24);
-        assert_eq!((w, h), (30, 24)); // 3×, capped
+        assert_eq!((w, h), (30, 24));
     }
 
     #[test]
