@@ -56,6 +56,7 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | `RCT_TERMINAL_TITLE` | — | Window title (default `tiny care`) |
 | `RCT_POMODORO` | `--pomodoro` | Focus minutes (default 25) |
 | `RCT_BREAK` | `--break-minutes` | Break minutes (default 5) |
+| `RCT_THEME` | `--theme` | `dark` (default) \| `light` \| `auto` |
 
 ```bash
 export RCT_REPOS="$HOME/Developer/play,$HOME/Code"
@@ -79,6 +80,7 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | --- | --- |
 | `q` / `Esc` | Quit |
 | `r` | Refresh git / RSS / weather |
+| `t` | Toggle dark / light theme |
 | `Tab` | Focus today vs week list for scrolling |
 | `j` / `k` or arrows | Scroll focused commit list |
 | `p` | Toggle pomodoro in the say-box |

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::error::{CareError, Result};
 use crate::model::CareSource;
+use crate::theme::ThemeMode;
 
 const DEFAULT_BOTS: &[&str] = &[
     "selfcare@hachyderm.io",
@@ -28,6 +29,8 @@ pub struct Config {
     pub pomodoro: u64,
     pub break_minutes: u64,
     pub mock: bool,
+    /// UI palette: dark (default), light, or auto (from COLORFGBG when possible).
+    pub theme: ThemeMode,
 }
 
 impl Default for Config {
@@ -46,6 +49,7 @@ impl Default for Config {
             pomodoro: 25,
             break_minutes: 5,
             mock: false,
+            theme: ThemeMode::Dark,
         }
     }
 }
@@ -95,6 +99,9 @@ impl Config {
         if cli.mock {
             cfg.mock = true;
         }
+        if let Some(theme) = cli.theme {
+            cfg.theme = theme;
+        }
 
         // Explicit feed URLs win / pad sources when provided.
         if !cfg.bot_feeds.is_empty() {
@@ -132,6 +139,7 @@ pub struct CliOverrides {
     pub pomodoro: Option<u64>,
     pub break_minutes: Option<u64>,
     pub mock: bool,
+    pub theme: Option<ThemeMode>,
 }
 
 fn merge_env(cfg: &mut Config) -> Result<()> {
@@ -184,6 +192,10 @@ fn merge_env(cfg: &mut Config) -> Result<()> {
     }
     if let Some(v) = env_first(&["RCT_MOCK"]) {
         cfg.mock = parse_bool(&v)?;
+    }
+    if let Some(v) = env_first(&["RCT_THEME"]) {
+        cfg.theme = ThemeMode::parse(&v)
+            .ok_or_else(|| CareError::Config(format!("invalid theme: {v} (dark|light|auto)")))?;
     }
     Ok(())
 }

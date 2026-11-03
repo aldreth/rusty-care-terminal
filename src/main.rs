@@ -3,6 +3,7 @@ mod config;
 mod error;
 mod model;
 mod services;
+mod theme;
 mod ui;
 
 use std::io::{self, stdout};
@@ -20,6 +21,7 @@ use ratatui::backend::CrosstermBackend;
 
 use app::{App, AppAction};
 use config::{CliOverrides, Config};
+use theme::ThemeMode;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -74,10 +76,21 @@ struct Cli {
     /// Force mock care messages (skip live Mastodon RSS).
     #[arg(long, env = "RCT_MOCK", default_value_t = false)]
     mock: bool,
+
+    /// UI theme: dark | light | auto (overrides RCT_THEME). Press `t` to toggle.
+    #[arg(long, env = "RCT_THEME")]
+    theme: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let theme = match cli.theme.as_deref() {
+        Some(raw) => Some(ThemeMode::parse(raw).ok_or_else(|| {
+            anyhow::anyhow!("invalid --theme / RCT_THEME: {raw} (dark|light|auto)")
+        })?),
+        None => None,
+    };
+
     let config = Config::load(CliOverrides {
         repos: cli.repos,
         repos_depth: cli.repos_depth,
@@ -91,6 +104,7 @@ fn main() -> anyhow::Result<()> {
         pomodoro: cli.pomodoro,
         break_minutes: cli.break_minutes,
         mock: cli.mock,
+        theme,
     })
     .context("loading config")?;
 

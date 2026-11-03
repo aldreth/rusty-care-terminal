@@ -182,7 +182,7 @@ impl App {
             String::new()
         };
         self.status = format!(
-            "{repo_note} · today {} · week {} · {care_note}{weather_note}{warn_note}{pomo_hint} · upd {updated} · q/r/p",
+            "{repo_note} · today {} · week {} · {care_note}{weather_note}{warn_note}{pomo_hint} · upd {updated} · q/r/t/p",
             self.commits.today_count(),
             self.commits.week_count()
         );
@@ -223,6 +223,9 @@ impl App {
                     } else {
                         self.scroll_week = self.scroll_week.saturating_sub(1);
                     }
+                }
+                KeyCode::Char('t') => {
+                    self.config.theme = self.config.theme.toggle();
                 }
                 KeyCode::Char('p') => {
                     self.pomodoro.active = !self.pomodoro.active;
