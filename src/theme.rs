@@ -44,9 +44,10 @@ pub enum ResolvedTheme {
 }
 
 /// Palette inspired by the original tiny-care-terminal screenshot.
+///
+/// Background is never set — the terminal’s own theme (e.g. Solarized) shows through.
 #[derive(Debug, Clone, Copy)]
 pub struct Theme {
-    pub bg: Color,
     pub fg: Color,
     pub border: Color,
     pub title: Color,
@@ -71,44 +72,43 @@ impl Theme {
         }
     }
 
-    /// High-saturation accents on black — matches the classic screenshot.
+    /// High-saturation accents for dark terminal themes.
     pub fn dark() -> Self {
         Self {
-            bg: Color::Black,
-            fg: Color::White,
+            fg: Color::Reset,
             border: Color::Rgb(90, 200, 220),
-            title: Color::White,
+            title: Color::Reset,
             hash: Color::Rgb(255, 105, 180),
-            subject: Color::White,
+            subject: Color::Reset,
             time_fresh: Color::Rgb(120, 230, 90),
             time_warm: Color::Rgb(240, 210, 70),
             muted: Color::Rgb(130, 140, 150),
             accent: Color::Rgb(255, 140, 200),
             bar: Color::Rgb(80, 210, 230),
-            bar_value: Color::White,
+            bar_value: Color::Reset,
         }
     }
 
-    /// Deeper accents on a light ground so the same roles stay readable.
+    /// Deeper accents for light terminal themes (still no painted background).
     pub fn light() -> Self {
         Self {
-            bg: Color::Rgb(250, 250, 252),
-            fg: Color::Rgb(28, 30, 36),
+            fg: Color::Reset,
             border: Color::Rgb(25, 110, 145),
             title: Color::Rgb(15, 85, 120),
             hash: Color::Rgb(170, 25, 110),
-            subject: Color::Rgb(28, 30, 36),
+            subject: Color::Reset,
             time_fresh: Color::Rgb(15, 120, 55),
             time_warm: Color::Rgb(150, 100, 10),
             muted: Color::Rgb(100, 108, 118),
             accent: Color::Rgb(150, 40, 100),
             bar: Color::Rgb(20, 130, 165),
-            bar_value: Color::Rgb(250, 250, 252),
+            bar_value: Color::Reset,
         }
     }
 
+    /// Foreground only — never sets a background cell color.
     pub fn root_style(self) -> Style {
-        Style::default().bg(self.bg).fg(self.fg)
+        Style::default().fg(self.fg)
     }
 
     pub fn border_style(self) -> Style {

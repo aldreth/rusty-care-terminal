@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{BarChart, Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{BarChart, Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, PomodoroPhase};
 use crate::theme::Theme;
@@ -11,8 +11,6 @@ use crate::ui::art;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = Theme::for_mode(app.config.theme);
-    frame.render_widget(Clear, frame.area());
-    frame.render_widget(Block::default().style(theme.root_style()), frame.area());
 
     let root = Layout::default()
         .direction(Direction::Vertical)
@@ -372,7 +370,7 @@ fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     if app.loading {
         text = format!("loading… · {text}");
     }
-    let widget = Paragraph::new(text).style(theme.muted_style().bg(theme.bg));
+    let widget = Paragraph::new(text).style(theme.muted_style());
     frame.render_widget(widget, area);
 }
 
