@@ -1,6 +1,12 @@
 use std::process::Command;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::thread;
+use std::time::Duration;
 
 use ratatui::style::{Color, Style};
+
+/// How often auto mode re-reads the desktop light/dark setting.
+const OS_THEME_POLL: Duration = Duration::from_secs(30);
 
 /// UI appearance. `Auto` (default) follows the terminal/OS when `RCT_THEME` is unset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -59,7 +65,11 @@ pub struct Theme {
 
 impl Theme {
     pub fn for_mode(mode: ThemeMode) -> Self {
-        match mode.resolve() {
+        Self::for_resolved(mode.resolve())
+    }
+
+    pub fn for_resolved(resolved: ResolvedTheme) -> Self {
+        match resolved {
             ResolvedTheme::Dark => Self::dark(),
             ResolvedTheme::Light => Self::light(),
         }
@@ -118,6 +128,62 @@ impl Theme {
 
     pub fn accent_style(self) -> Style {
         Style::default().fg(self.accent)
+    }
+}
+
+/// Re-reads the desktop light/dark setting on a background thread (the checks
+/// spawn `defaults` / `reg` / `gsettings`, which must not stall the UI).
+pub struct OsThemeWatch {
+    nudge: Sender<()>,
+    readings: Receiver<Option<ResolvedTheme>>,
+    last: Option<ResolvedTheme>,
+}
+
+impl OsThemeWatch {
+    pub fn spawn() -> Option<Self> {
+        let (nudge, requests) = mpsc::channel();
+        let (report, readings) = mpsc::channel();
+        thread::Builder::new()
+            .name("os-theme".into())
+            .spawn(move || {
+                while report.send(from_os_preference()).is_ok() {
+                    if let Err(RecvTimeoutError::Disconnected) =
+                        requests.recv_timeout(OS_THEME_POLL)
+                    {
+                        break;
+                    }
+                }
+            })
+            .ok()?;
+        Some(Self::from_channels(nudge, readings))
+    }
+
+    fn from_channels(nudge: Sender<()>, readings: Receiver<Option<ResolvedTheme>>) -> Self {
+        Self {
+            nudge,
+            readings,
+            last: None,
+        }
+    }
+
+    /// Asks for a re-read now instead of at the next poll.
+    pub fn check_now(&self) {
+        let _ = self.nudge.send(());
+    }
+
+    /// The desktop setting, if it flipped since the previous reading. The first
+    /// reading is only a baseline, so a startup theme taken from `COLORFGBG`
+    /// stays until the desktop actually changes.
+    pub fn changed(&mut self) -> Option<ResolvedTheme> {
+        let mut flipped = None;
+        while let Ok(reading) = self.readings.try_recv() {
+            let Some(reading) = reading else { continue };
+            if self.last.is_some_and(|last| last != reading) {
+                flipped = Some(reading);
+            }
+            self.last = Some(reading);
+        }
+        flipped
     }
 }
 
@@ -313,6 +379,22 @@ mod tests {
     #[test]
     fn default_mode_is_auto() {
         assert_eq!(ThemeMode::default(), ThemeMode::Auto);
+    }
+
+    #[test]
+    fn os_watch_reports_flips_after_the_baseline() {
+        let (nudge, _requests) = mpsc::channel();
+        let (report, readings) = mpsc::channel();
+        let mut watch = OsThemeWatch::from_channels(nudge, readings);
+        let mut read = |reading| {
+            report.send(reading).unwrap();
+            watch.changed()
+        };
+        assert_eq!(read(Some(ResolvedTheme::Light)), None);
+        assert_eq!(read(Some(ResolvedTheme::Light)), None);
+        assert_eq!(read(None), None);
+        assert_eq!(read(Some(ResolvedTheme::Dark)), Some(ResolvedTheme::Dark));
+        assert_eq!(read(Some(ResolvedTheme::Dark)), None);
     }
 
     #[cfg(any(

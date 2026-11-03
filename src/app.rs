@@ -7,7 +7,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use crate::config::{Config, MAX_BREAK_MINS, MAX_POMODORO_MINS};
 use crate::model::{Animal, CareMessage, CareSource, CommitStats, WeatherSnapshot};
 use crate::services::{self, Snapshot, mock};
-use crate::theme::Theme;
+use crate::theme::{OsThemeWatch, Theme, ThemeMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
@@ -119,6 +119,8 @@ pub struct App {
     pub animal: Option<Animal>,
     last_refresh: Instant,
     pending: Option<Receiver<Snapshot>>,
+    /// Follows desktop light/dark changes; only in auto theme mode.
+    os_theme: Option<OsThemeWatch>,
 }
 
 impl App {
@@ -141,7 +143,11 @@ impl App {
             focus: FocusView::None,
             last_refresh: Instant::now(),
             pending: None,
+            os_theme: None,
         };
+        if app.config.theme == ThemeMode::Auto {
+            app.os_theme = OsThemeWatch::spawn();
+        }
         app.start_refresh();
         app
     }
@@ -168,6 +174,9 @@ impl App {
     pub fn start_refresh(&mut self) {
         if self.pending.is_some() {
             return;
+        }
+        if let Some(watch) = &self.os_theme {
+            watch.check_now();
         }
         let (tx, rx) = mpsc::channel();
         let config = self.config.clone();
@@ -305,6 +314,9 @@ impl App {
     pub fn poll_events(&mut self, timeout: Duration) -> anyhow::Result<AppAction> {
         self.pomodoro.tick();
         self.poll_refresh();
+        if let Some(flipped) = self.os_theme.as_mut().and_then(OsThemeWatch::changed) {
+            self.theme = Theme::for_resolved(flipped);
+        }
         if self.should_auto_refresh() {
             self.start_refresh();
         }
