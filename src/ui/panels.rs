@@ -304,7 +304,7 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     };
 
     let widget = Paragraph::new(lines)
-        .block(border_block(title, theme))
+        .block(border_block(&title, theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
