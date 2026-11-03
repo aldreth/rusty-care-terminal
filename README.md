@@ -11,7 +11,7 @@ It ships as a single binary and is configured with **environment variables** and
 - A say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
 - Weather from [Open-Meteo](https://open-meteo.com/) (city name or `lat,lon`, no API key)
 - A pomodoro timer in the say-box
-- Auto, dark and light themes that never paint over your terminal's background; auto follows your OS switching between light and dark
+- Auto, dark and light themes that never paint over your terminal's background; auto follows light/dark switches live (instantly in Ghostty, kitty and other terminals that report them)
 - Refreshes run in the background, so the UI stays responsive on slow or flaky networks
 
 ## Install

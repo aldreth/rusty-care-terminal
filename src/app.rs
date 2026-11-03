@@ -2,12 +2,13 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::config::{Config, MAX_BREAK_MINS, MAX_POMODORO_MINS};
+use crate::input::{Input, InputSource};
 use crate::model::{Animal, CareMessage, CareSource, CommitStats, WeatherSnapshot};
 use crate::services::{self, Snapshot, mock};
-use crate::theme::{OsThemeWatch, Theme, ThemeMode};
+use crate::theme::{OsThemeWatch, ResolvedTheme, Theme, ThemeMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
@@ -310,8 +311,31 @@ impl App {
         *scroll = scroll.saturating_add_signed(delta);
     }
 
+    pub fn handle_input(&mut self, input: Input) -> AppAction {
+        match input {
+            Input::Key(key) => self.handle_key(key),
+            Input::ColorScheme(scheme) => {
+                self.follow_terminal_scheme(scheme);
+                AppAction::Continue
+            }
+        }
+    }
+
+    /// A terminal that reports its own dark/light scheme (DEC mode 2031) knows
+    /// better than the OS setting, so the OS watch stops once one arrives.
+    fn follow_terminal_scheme(&mut self, scheme: ResolvedTheme) {
+        if self.config.theme == ThemeMode::Auto {
+            self.theme = Theme::for_resolved(scheme);
+            self.os_theme = None;
+        }
+    }
+
     /// Waits up to `timeout` for input; also advances timers and background work.
-    pub fn poll_events(&mut self, timeout: Duration) -> anyhow::Result<AppAction> {
+    pub fn poll_events(
+        &mut self,
+        input: &InputSource,
+        timeout: Duration,
+    ) -> anyhow::Result<AppAction> {
         self.pomodoro.tick();
         self.poll_refresh();
         if let Some(flipped) = self.os_theme.as_mut().and_then(OsThemeWatch::changed) {
@@ -320,12 +344,10 @@ impl App {
         if self.should_auto_refresh() {
             self.start_refresh();
         }
-        if event::poll(timeout)?
-            && let Event::Key(key) = event::read()?
-        {
-            return Ok(self.handle_key(key));
-        }
-        Ok(AppAction::Continue)
+        Ok(match input.next(timeout)? {
+            Some(input) => self.handle_input(input),
+            None => AppAction::Continue,
+        })
     }
 }
 
@@ -426,6 +448,24 @@ mod tests {
         assert_eq!(app.pomodoro.work_mins, 1);
         assert_eq!(app.pomodoro.break_mins, MAX_BREAK_MINS);
         assert_eq!(app.pomodoro.mmss(), "01:00");
+    }
+
+    #[test]
+    fn terminal_scheme_reports_switch_auto_theme_only() {
+        let mut app = offline_app();
+        app.handle_input(Input::ColorScheme(ResolvedTheme::Light));
+        assert_eq!(app.theme.border, Theme::light().border);
+        assert!(app.os_theme.is_none());
+        app.handle_input(Input::ColorScheme(ResolvedTheme::Dark));
+        assert_eq!(app.theme.border, Theme::dark().border);
+
+        let mut pinned = App::new(Config {
+            mock: true,
+            theme: ThemeMode::Dark,
+            ..Config::default()
+        });
+        pinned.handle_input(Input::ColorScheme(ResolvedTheme::Light));
+        assert_eq!(pinned.theme.border, Theme::dark().border);
     }
 
     #[test]

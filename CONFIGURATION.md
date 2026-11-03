@@ -17,7 +17,7 @@ rusty-care-terminal has no config file. Every option is a CLI flag and an `RCT_*
 | `RCT_UPDATE_INTERVAL` | `--update-interval` | `20` | Minutes between automatic refreshes (1–1440) |
 | `RCT_POMODORO` | `--pomodoro` | `25` | Focus minutes (1–120) |
 | `RCT_BREAK` | `--break-minutes` | `5` | Break minutes (1–60) |
-| `RCT_THEME` | `--theme` | `auto` | `auto` (terminal `COLORFGBG`, then OS setting; follows OS light/dark switches), `dark` or `light` |
+| `RCT_THEME` | `--theme` | `auto` | `auto` (follows your terminal's or OS's light/dark switches), `dark` or `light` |
 | `RCT_TERMINAL_TITLE` | `--terminal-title` | `Rusty care terminal` | Window title; empty or `false` leaves the title alone |
 | `RCT_MOCK` | `--mock` | `false` | Offline care messages instead of live feeds |
 
@@ -71,7 +71,10 @@ Gentler alternatives: `scream@bots.robots.rodeo`, `meditation@fedigroups.social`
 
 The theme is set only by `RCT_THEME` / `--theme`, and the background is never painted, so your terminal's own background and transparency show through.
 
-In `auto` mode the app starts from your terminal's `COLORFGBG` if it sets one, otherwise the OS setting (macOS appearance, Windows app mode, or GNOME/freedesktop colour scheme). While running it re-checks the OS setting every 30 seconds and on every refresh (`r` or the automatic one), and switches theme when the OS flips between light and dark, e.g. at sunset. If your terminal keeps the same colours whatever the OS does, pin `RCT_THEME=dark` or `light`.
+In `auto` mode the app follows light/dark switches while it runs, e.g. at sunset:
+
+- **Terminals that report their colour scheme** (Ghostty, kitty, Contour, recent VTE terminals, tmux 3.6+): the app asks the terminal at startup and switches the moment the terminal does, including when you change the terminal's own theme. In Ghostty, `theme = light:…,dark:…` makes the terminal follow macOS, and the app follows the terminal.
+- **Other terminals:** the app starts from `COLORFGBG` if the terminal sets one, otherwise the OS setting (macOS appearance, Windows app mode, or GNOME/freedesktop colour scheme). It re-checks the OS every 30 seconds and on every refresh (`r` or the automatic one). If your terminal keeps the same colours whatever the OS does, pin `RCT_THEME=dark` or `light`.
 
 The say-box animals are pixel sprites with hand-drawn sizes. The box picks the tallest that fits (scaling only by whole pixels), so every animal ends up a similar size, and hides the art when the panel is too short. `a` cycles animals while running; `RCT_SAY_BOX` picks the first one.
 

@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod error;
+mod input;
 mod model;
 mod services;
 mod theme;
@@ -16,6 +17,8 @@ use ratatui::DefaultTerminal;
 
 use app::{App, AppAction};
 use config::{CliOverrides, Config};
+use input::InputSource;
+use theme::ThemeMode;
 
 /// Every flag can also be set with the `RCT_*` variable shown in `--help`.
 #[derive(Debug, Parser)]
@@ -123,7 +126,14 @@ fn main() -> anyhow::Result<()> {
     if let Some(title) = &title {
         push_title(title);
     }
+    let follow_terminal_scheme = cfg!(unix) && config.theme == ThemeMode::Auto;
+    if follow_terminal_scheme {
+        subscribe_color_scheme();
+    }
     let result = run(&mut terminal, config);
+    if follow_terminal_scheme {
+        write_escape(input::UNSUBSCRIBE_COLOR_SCHEME);
+    }
     if title.is_some() {
         pop_title();
     }
@@ -132,13 +142,31 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run(terminal: &mut DefaultTerminal, config: Config) -> anyhow::Result<()> {
+    let input = InputSource::start().context("reading terminal input")?;
     let mut app = App::new(config);
     loop {
         terminal.draw(|frame| ui::draw(frame, &app))?;
-        if app.poll_events(Duration::from_millis(200))? == AppAction::Quit {
+        if app.poll_events(&input, Duration::from_millis(200))? == AppAction::Quit {
             return Ok(());
         }
     }
+}
+
+/// Asks the terminal (Ghostty, kitty, …) to report dark/light switches. The
+/// subscription is dropped even on a panic, or the shell would receive the reports.
+fn subscribe_color_scheme() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        write_escape(input::UNSUBSCRIBE_COLOR_SCHEME);
+        previous(info);
+    }));
+    write_escape(input::SUBSCRIBE_COLOR_SCHEME);
+}
+
+fn write_escape(sequence: &str) {
+    let mut out = io::stdout();
+    let _ = out.write_all(sequence.as_bytes());
+    let _ = out.flush();
 }
 
 /// Saves the current title on the xterm title stack, then sets ours.
