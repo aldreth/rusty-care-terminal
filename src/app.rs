@@ -13,16 +13,13 @@ pub enum AppAction {
     Quit,
 }
 
-/// Full-screen view of one panel so terminal text selection stays in-bounds.
+/// Full-screen commit list so terminal text selection stays in-bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusView {
     #[default]
     None,
     Today,
     Week,
-    /// Care slot: 0 = say-box source, 1/2 = side care panels.
-    Care(usize),
-    Weather,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,8 +161,7 @@ impl App {
 
         // Keep the footer short: shortcuts + a single warning if something failed.
         self.status =
-            "q quit · r refresh · t theme · h help · 1-3/g/w focus-to-copy · Tab/j/k · p pomo"
-                .into();
+            "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo".into();
         self.error = self.warnings.first().cloned();
         self.last_refresh = Instant::now();
         self.last_refresh_at = Local::now();
@@ -206,16 +202,24 @@ impl App {
                 KeyCode::Char('h') => {
                     self.show_help = !self.show_help;
                 }
-                KeyCode::Char('1') => self.focus = FocusView::Care(0),
-                KeyCode::Char('2') => self.focus = FocusView::Care(1),
-                KeyCode::Char('3') => self.focus = FocusView::Care(2),
-                KeyCode::Char('g') => self.focus = FocusView::Today,
-                KeyCode::Char('w') => {
-                    // Weather focus (also closes help if open).
+                KeyCode::Char('t') => {
+                    // Toggle Today commits fullscreen (for multi-line copy).
                     self.show_help = false;
-                    self.focus = FocusView::Weather;
+                    self.focus = match self.focus {
+                        FocusView::Today => FocusView::None,
+                        _ => FocusView::Today,
+                    };
+                    self.scroll_today_focus = true;
                 }
-                KeyCode::Char('G') => self.focus = FocusView::Week,
+                KeyCode::Char('w') => {
+                    // Toggle Week commits fullscreen (for multi-line copy).
+                    self.show_help = false;
+                    self.focus = match self.focus {
+                        FocusView::Week => FocusView::None,
+                        _ => FocusView::Week,
+                    };
+                    self.scroll_today_focus = false;
+                }
                 KeyCode::Char('r') => {
                     self.show_help = false;
                     self.focus = FocusView::None;
@@ -237,9 +241,6 @@ impl App {
                     } else {
                         self.scroll_week = self.scroll_week.saturating_sub(1);
                     }
-                }
-                KeyCode::Char('t') => {
-                    self.config.theme = self.config.theme.toggle();
                 }
                 KeyCode::Char('p') => {
                     self.pomodoro.active = !self.pomodoro.active;

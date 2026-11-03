@@ -76,7 +76,7 @@ struct Cli {
     #[arg(long, env = "RCT_MOCK", default_value_t = false)]
     mock: bool,
 
-    /// UI theme: auto (default) | dark | light. Overrides RCT_THEME. Press `t` to toggle.
+    /// UI theme: auto (default) | dark | light. Overrides RCT_THEME (no key toggle).
     #[arg(long, env = "RCT_THEME")]
     theme: Option<String>,
 }

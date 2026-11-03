@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{BarChart, Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{BarChart, Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::{App, FocusView, PomodoroPhase};
 use crate::theme::Theme;
@@ -65,15 +65,35 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn border_block(title: &str, theme: Theme) -> Block<'_> {
+    border_block_selected(title, theme, false)
+}
+
+fn border_block_selected(title: &str, theme: Theme, selected: bool) -> Block<'_> {
+    let (border_style, border_type, title_style) = if selected {
+        (
+            Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+            BorderType::Double,
+            Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (
+            theme.border_style(),
+            BorderType::Plain,
+            theme.title_style().add_modifier(Modifier::BOLD),
+        )
+    };
+    let title_text = if selected && !title.is_empty() {
+        format!("▸ {title}")
+    } else {
+        title.to_string()
+    };
     let mut block = Block::default()
         .borders(Borders::ALL)
-        .border_style(theme.border_style())
+        .border_type(border_type)
+        .border_style(border_style)
         .style(theme.root_style());
-    if !title.is_empty() {
-        block = block.title(Span::styled(
-            title,
-            theme.title_style().add_modifier(Modifier::BOLD),
-        ));
+    if !title_text.is_empty() {
+        block = block.title(Span::styled(title_text, title_style));
     }
     block
 }
@@ -84,9 +104,10 @@ fn draw_today(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     } else {
         "tiny commit bot is looking for tiny commits!"
     };
+    let selected = app.scroll_today_focus;
     let lines = commit_lines(&app.commits.today, empty, theme);
     let widget = Paragraph::new(lines)
-        .block(border_block("📝 Today", theme))
+        .block(border_block_selected("📝 Today", theme, selected))
         .style(theme.root_style())
         .wrap(Wrap { trim: false })
         .scroll((app.scroll_today, 0));
@@ -99,9 +120,10 @@ fn draw_week(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     } else {
         "no commits this week yet — soft start is fine"
     };
+    let selected = !app.scroll_today_focus;
     let lines = commit_lines(&app.commits.week, empty, theme);
     let widget = Paragraph::new(lines)
-        .block(border_block("📝 Week", theme))
+        .block(border_block_selected("📝 Week", theme, selected))
         .style(theme.root_style())
         .wrap(Wrap { trim: false })
         .scroll((app.scroll_week, 0));
@@ -441,89 +463,30 @@ fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 }
 
 fn draw_focus_view(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
-    let (title, lines) = match app.focus {
+    let (title, lines, scroll) = match app.focus {
         FocusView::None => return,
         FocusView::Today => (
-            "📝 Today · Esc back · select to copy",
+            "📝 Today · t/Esc back · select to copy",
             commit_lines(&app.commits.today, "no commits today", theme),
+            app.scroll_today,
         ),
         FocusView::Week => (
-            "📝 Week · Esc back · select to copy",
+            "📝 Week · w/Esc back · select to copy",
             commit_lines(&app.commits.week, "no commits this week", theme),
+            app.scroll_week,
         ),
-        FocusView::Weather => ("☀️ · Esc back · select to copy", weather_lines(app, theme)),
-        FocusView::Care(idx) => {
-            let title = match idx {
-                0 => "✨ say · Esc back · select to copy",
-                1 => "💖 · Esc back · select to copy",
-                _ => "💬 · Esc back · select to copy",
-            };
-            (title, care_focus_lines(app, idx, theme))
-        }
     };
 
     let widget = Paragraph::new(lines)
-        .block(border_block(title, theme))
+        .block(border_block_selected(title, theme, true))
         .style(theme.root_style())
         .wrap(Wrap { trim: false })
-        .scroll((
-            if matches!(app.focus, FocusView::Week) {
-                app.scroll_week
-            } else if matches!(app.focus, FocusView::Today) {
-                app.scroll_today
-            } else {
-                0
-            },
-            0,
-        ));
+        .scroll((scroll, 0));
     frame.render_widget(widget, area);
 }
 
-fn weather_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
-    if let Some(w) = &app.weather {
-        vec![
-            Line::from(Span::styled(
-                format!("{} · {}", w.temperature, w.summary),
-                Style::default().fg(theme.fg),
-            )),
-            Line::from(Span::styled(
-                w.high_low.clone(),
-                Style::default().fg(theme.fg),
-            )),
-            Line::from(Span::styled(w.place.clone(), theme.muted_style())),
-            Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
-        ]
-    } else {
-        vec![Line::from(Span::styled(
-            "no weather yet",
-            theme.muted_style(),
-        ))]
-    }
-}
-
-fn care_focus_lines(app: &App, index: usize, theme: Theme) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    match app.care.get(index) {
-        Some(msg) => {
-            if let Some(label) = friendly_care_label(&msg.source_label) {
-                lines.push(Line::from(Span::styled(label, theme.accent_style())));
-                lines.push(Line::from(""));
-            }
-            lines.push(Line::from(Span::styled(
-                msg.text.clone(),
-                Style::default().fg(theme.fg),
-            )));
-        }
-        None => lines.push(Line::from(Span::styled(
-            "no care message",
-            theme.muted_style(),
-        ))),
-    }
-    lines
-}
-
 fn draw_help_modal(frame: &mut Frame, theme: Theme) {
-    let area = centered_rect(62, 20, frame.area());
+    let area = centered_rect(62, 18, frame.area());
     frame.render_widget(Clear, area);
 
     let lines = vec![
@@ -535,24 +498,18 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         help_line("q / Esc", "quit (closes help / focus first)", theme),
         help_line("h", "toggle this help", theme),
         help_line("r", "refresh git / care / weather", theme),
-        help_line("t", "toggle dark / light accents", theme),
-        help_line(
-            "1 / 2 / 3",
-            "fullscreen say / care / care (for copy)",
-            theme,
-        ),
-        help_line("g / G", "fullscreen Today / Week commits", theme),
-        help_line("w", "fullscreen weather", theme),
-        help_line("Tab", "focus Today vs Week list", theme),
-        help_line("j / k", "scroll focused commit list", theme),
+        help_line("t", "fullscreen Today commits (copy-friendly)", theme),
+        help_line("w", "fullscreen Week commits (copy-friendly)", theme),
+        help_line("Tab", "select Today vs Week for scrolling", theme),
+        help_line("j / k", "scroll selected commit list", theme),
         help_line("p", "pomodoro in the say-box", theme),
         Line::from(""),
         Line::from(Span::styled(
-            "Terminal selection is rectangular across columns — use 1/2/3/g/w",
+            "Theme: RCT_THEME / --theme (dark|light|auto) — no key toggle.",
             theme.muted_style(),
         )),
         Line::from(Span::styled(
-            "to open one panel full-width, then select text to copy.",
+            "Say-box art: RCT_SAY_BOX=parrot|bunny|llama|cat|RANDOM|/path.png",
             theme.muted_style(),
         )),
     ];

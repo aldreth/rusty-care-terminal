@@ -6,8 +6,12 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use crate::theme::Theme;
+use crate::ui::sprites;
 
-/// Speech bubble + character as styled lines, sized for the say-box.
+/// Speech bubble + character as half-block pixel art (or a custom image/text file).
+///
+/// Built-ins: `parrot` (default), `bunny`, `llama`, `cat`, `RANDOM`.
+/// Custom: path to a `.png`/`.jpg`/`.jpeg` (half-block rendered) or any text/`.ansi`/`.cow` file.
 pub fn say_box_lines(
     character: &str,
     message: &str,
@@ -23,24 +27,30 @@ pub fn say_box_lines(
         .collect();
 
     let bubble_h = bubble_lines.len();
-    let art_budget = max_height.saturating_sub(bubble_h).max(5);
-    let art = resolve_art(character, art_budget);
+    let art_rows = max_height.saturating_sub(bubble_h).max(5);
+    let art_cols = max_width.saturating_sub(1).max(12);
+
     let mut lines = bubble_lines;
-    lines.extend(colorize_art(&art, theme));
+    lines.extend(resolve_art_lines(character, art_cols, art_rows, theme));
     lines
 }
 
-fn resolve_art(character: &str, height_budget: usize) -> String {
+fn resolve_art_lines(
+    character: &str,
+    max_cols: usize,
+    max_rows: usize,
+    theme: Theme,
+) -> Vec<Line<'static>> {
     let trimmed = character.trim();
     if trimmed.is_empty() {
-        return parrot_for_height(height_budget).to_string();
+        return sprites::sprite_lines("parrot", max_cols, max_rows);
     }
-    if Path::new(trimmed).is_file() {
-        return fs::read_to_string(trimmed)
-            .unwrap_or_else(|_| parrot_for_height(height_budget).to_string())
-            .trim_end()
-            .to_string();
+
+    let path = Path::new(trimmed);
+    if path.is_file() {
+        return load_art_file(path, max_cols, max_rows, theme);
     }
+
     let key = trimmed.to_ascii_lowercase();
     let choice = if key == "random" {
         let n = SystemTime::now()
@@ -51,47 +61,68 @@ fn resolve_art(character: &str, height_budget: usize) -> String {
     } else {
         key.as_str()
     };
+
     match choice {
-        "bunny" => BUNNY.to_string(),
-        "llama" => LLAMA.to_string(),
-        "cat" => CAT.to_string(),
-        _ => parrot_for_height(height_budget).to_string(),
+        "bunny" | "llama" | "cat" | "parrot" => sprites::sprite_lines(choice, max_cols, max_rows),
+        _ => sprites::sprite_lines("parrot", max_cols, max_rows),
     }
 }
 
-fn parrot_for_height(height_budget: usize) -> &'static str {
-    if height_budget >= 14 {
-        PARROT_LARGE
-    } else if height_budget >= 10 {
-        PARROT_MEDIUM
-    } else {
-        PARROT_SMALL
-    }
-}
+fn load_art_file(
+    path: &Path,
+    max_cols: usize,
+    max_rows: usize,
+    theme: Theme,
+) -> Vec<Line<'static>> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
-/// Dense party-parrot coloring: filled body cyan, beak magenta, eyes green.
-fn colorize_art(art: &str, theme: Theme) -> Vec<Line<'static>> {
-    art.lines()
-        .skip_while(|l| l.is_empty())
-        .map(|row| {
-            let spans: Vec<Span<'static>> = row
-                .chars()
-                .map(|ch| {
-                    let color = match ch {
-                        'o' | 'O' | '0' => theme.time_fresh,
-                        '>' | '<' | '=' | '~' | '"' | '\'' | 'v' | 'V' => theme.hash,
-                        '█' | '▓' | '▒' | '#' | '@' | '%' => theme.bar,
-                        '▄' | '▀' | '▌' | '▐' | '■' | '●' => theme.bar,
-                        '.' | '-' | '_' | '/' | '\\' | '|' | '(' | ')' | '`' => theme.border,
-                        ' ' => theme.fg,
-                        _ => theme.bar,
-                    };
-                    Span::styled(ch.to_string(), Style::default().fg(color))
+    if matches!(ext.as_str(), "png" | "jpg" | "jpeg")
+        && let Ok(img) = image::open(path)
+    {
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        return sprites::rgba_to_halfblocks(rgba.as_raw(), w, h, max_cols, max_rows);
+    }
+
+    // Text / cowsay / ansi-ish: show as monochrome lines (ANSI escapes stripped lightly).
+    match fs::read_to_string(path) {
+        Ok(raw) => {
+            let cleaned = strip_ansi(&raw);
+            cleaned
+                .lines()
+                .take(max_rows)
+                .map(|row| {
+                    let clipped: String = row.chars().take(max_cols).collect();
+                    Line::from(Span::styled(clipped, Style::default().fg(theme.bar)))
                 })
-                .collect();
-            Line::from(spans)
-        })
-        .collect()
+                .collect()
+        }
+        Err(_) => sprites::sprite_lines("parrot", max_cols, max_rows),
+    }
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn speech_bubble(message: &str, max_width: usize) -> String {
@@ -159,71 +190,6 @@ fn wrap_text(message: &str, width: usize) -> Vec<String> {
     rows
 }
 
-// Filled party-parrot silhouettes (block chars read as solid color in the TUI).
-
-const PARROT_SMALL: &str = r#"
-  \
-   \   ▄██▄
-     ▄█▀o▐█
-     █▌ >██
-     ▀█▄▄█▀
-    ██▌▐███
-   ███  ███
-"#;
-
-const PARROT_MEDIUM: &str = r#"
-   \
-    \    ▄██████▄
-     \  ███▀o ▀███
-      \ ██▌  > ███
-       ▐███▄▄▄███▌
-       ▄██████████▄
-      ███▀▀▐▌▀▀███
-     ███   ▐▌   ███
-     ██    ▐▌    ██
-"#;
-
-const PARROT_LARGE: &str = r#"
-    \
-     \      ▄████████▄
-      \   ▄███▀▀▀▀▀███▄
-       \ ███▀  o o  ▀███
-        ▐██▌    >    ▐██▌
-        ▐███▄      ▄███▌
-         ▀████▄▄▄████▀
-        ▄██████████████▄
-       ███▀▀▀▀▐▌▀▀▀▀▀███
-      ███     ▐▌     ███
-     ███      ▐▌      ███
-     ██       ▐▌       ██
-      ▀▄      ▐▌      ▄▀
-       ▀██████████████▀
-"#;
-
-const BUNNY: &str = r#"
- \
-  \  ██ ██
-     █▀█▀█
-     █>o<█
-     ▀███▀
-"#;
-
-const LLAMA: &str = r#"
- \
-  \   ▄▄
-     █oo█
-    █████
-   █ █ █ █
-"#;
-
-const CAT: &str = r#"
- \
-  \  ▄███▄
-    █ o o █
-    █  >  █
-     ▀███▀
-"#;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,11 +219,5 @@ mod tests {
         let theme = Theme::dark();
         let out = say_box_lines("RANDOM", "hi", 40, 16, theme);
         assert!(!out.is_empty());
-    }
-
-    #[test]
-    fn large_parrot_is_filled() {
-        assert!(PARROT_LARGE.contains('█'));
-        assert!(PARROT_MEDIUM.contains('█'));
     }
 }

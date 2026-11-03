@@ -48,7 +48,7 @@ Env vars (primary) and matching CLI flags. Legacy `TTC_*` env aliases still work
 | `RCT_GIT_AUTHOR` | `--git-author` | Name/email(s) for sole/joint authorship filter |
 | `RCT_BOTS` | `--bots` | Care accounts `@user@instance` (first → say-box) |
 | `RCT_BOT_FEEDS` | `--bot-feeds` | Explicit RSS/Atom URLs |
-| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` \| `RANDOM` \| art file path |
+| `RCT_SAY_BOX` | `--say-box` | `parrot` \| `bunny` \| `llama` \| `cat` \| `RANDOM` \| path to `.png`/`.jpg` or text/`.cow` art |
 | `RCT_UPDATE_INTERVAL` | `--update-interval` | Minutes (default 20) |
 | `RCT_MOCK` | `--mock` | Skip live RSS; use bundled kindness text |
 | `RCT_WEATHER` | `--weather` | City name or `lat,lon` (Open-Meteo) |
@@ -81,19 +81,17 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | `h` | Help modal |
 | `q` / `Esc` | Quit (closes help / focus first) |
 | `r` | Refresh git / RSS / weather |
-| `t` | Toggle dark / light accents |
-| `1` / `2` / `3` | Fullscreen say / care / care (easier to select/copy) |
-| `g` / `G` | Fullscreen Today / Week commits |
-| `w` | Fullscreen weather |
-| `Tab` | Focus today vs week list for scrolling |
-| `j` / `k` or arrows | Scroll focused commit list |
+| `t` | Fullscreen Today commits (for multi-line copy) |
+| `w` | Fullscreen Week commits (for multi-line copy) |
+| `Tab` | Select which commit list j/k scrolls (highlighted border) |
+| `j` / `k` or arrows | Scroll selected commit list |
 | `p` | Toggle pomodoro in the say-box |
 | `s` | Start / pause pomodoro |
 | `e` | Reset current phase |
 | `u` / `U` | Work minutes +1 / −1 |
 | `b` / `B` | Break minutes +1 / −1 |
 
-Terminal text selection is rectangular across the whole screen, so multi-column layouts mix panels. Press `1`/`2`/`3`/`g`/`w` to open one panel full-width, then select to copy.
+Theme is only via `RCT_THEME` / `--theme` (no key toggle). Say-box pictures are configurable with `RCT_SAY_BOX` (built-in names or a path to a PNG/JPEG or text art file).
 
 Desktop notifications stay off (quiet for headless/remote use).
 

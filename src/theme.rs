@@ -28,13 +28,6 @@ impl ThemeMode {
             Self::Auto => detect_preferred_theme(),
         }
     }
-
-    pub fn toggle(self) -> Self {
-        match self.resolve() {
-            ResolvedTheme::Dark => Self::Light,
-            ResolvedTheme::Light => Self::Dark,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,12 +308,6 @@ mod tests {
         assert_eq!(ThemeMode::parse("LIGHT"), Some(ThemeMode::Light));
         assert_eq!(ThemeMode::parse("auto"), Some(ThemeMode::Auto));
         assert_eq!(ThemeMode::parse("nope"), None);
-    }
-
-    #[test]
-    fn toggle_flips_resolved() {
-        assert_eq!(ThemeMode::Dark.toggle(), ThemeMode::Light);
-        assert_eq!(ThemeMode::Light.toggle(), ThemeMode::Dark);
     }
 
     #[test]

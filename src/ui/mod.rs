@@ -1,5 +1,6 @@
 mod art;
 mod panels;
+mod sprites;
 
 use ratatui::Frame;
 
