@@ -22,7 +22,12 @@ use config::{CliOverrides, Config};
 #[command(
     name = "rusty-care-terminal",
     version,
-    about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter)."
+    about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter).",
+    after_help = concat!(
+        "Configuration guide and care accounts to try: ",
+        env!("CARGO_PKG_REPOSITORY"),
+        "/blob/main/CONFIGURATION.md"
+    )
 )]
 struct Cli {
     /// Comma-separated repo roots to scan for your commits.

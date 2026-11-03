@@ -413,7 +413,7 @@ fn render_osc8_hyperlink(buf: &mut Buffer, area: Rect, text: &str, url: &str, st
         return;
     }
 
-    // Acct labels are ASCII; truncate by char count to the cell run we occupy.
+    // Acct labels and URLs are ASCII; truncate by char count to the cell run we occupy.
     let visible: String = text.chars().take(area.width as usize).collect();
     let width = visible.chars().count() as u16;
     let Some(forced) = NonZeroU16::new(width) else {
@@ -567,8 +567,11 @@ fn draw_focus_view(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     frame.render_widget(widget, area);
 }
 
+const CONFIGURATION_URL: &str =
+    concat!(env!("CARGO_PKG_REPOSITORY"), "/blob/main/CONFIGURATION.md");
+
 fn draw_help_modal(frame: &mut Frame, theme: Theme) {
-    let area = centered_rect(62, 21, frame.area());
+    let area = centered_rect(80, 19, frame.area());
     frame.render_widget(Clear, area);
 
     let lines = vec![
@@ -591,20 +594,36 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         help_line("u/U b/B", "pomodoro focus ± · break ± minutes", theme),
         Line::from(""),
         Line::from(Span::styled(
-            "Theme: RCT_THEME / --theme (auto|dark|light)",
-            theme.muted_style(),
-        )),
-        Line::from(Span::styled(
-            "Starting animal: RCT_SAY_BOX=parrot|cat|bunny|llama|random",
+            "All settings (RCT_* env vars or flags, also in --help):",
             theme.muted_style(),
         )),
     ];
+    let link_row = lines.len() as u16;
 
-    let widget = Paragraph::new(lines)
-        .block(border_block("h", theme))
-        .style(theme.root_style())
-        .wrap(Wrap { trim: false });
-    frame.render_widget(widget, area);
+    let block = border_block("h", theme);
+    let inner = block.inner(area);
+    frame.render_widget(
+        Paragraph::new(lines).block(block).style(theme.root_style()),
+        area,
+    );
+
+    // Unwrapped, so each line is one row and the link lands right after them.
+    if link_row < inner.height {
+        let row = Rect {
+            x: inner.x + 2,
+            y: inner.y + link_row,
+            width: inner.width.saturating_sub(2),
+            height: 1,
+        };
+        let style = theme.accent_style().add_modifier(Modifier::UNDERLINED);
+        render_osc8_hyperlink(
+            frame.buffer_mut(),
+            row,
+            CONFIGURATION_URL,
+            CONFIGURATION_URL,
+            style,
+        );
+    }
 }
 
 fn help_line(key: &str, desc: &str, theme: Theme) -> Line<'static> {
