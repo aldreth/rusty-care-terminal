@@ -116,33 +116,47 @@ fn commit_lines(
         ))];
     }
 
-    let mut lines = Vec::new();
-    let mut last_repo: Option<&str> = None;
-    for c in entries.iter().take(60) {
-        if last_repo != Some(c.repo.as_str()) {
-            if last_repo.is_some() {
-                lines.push(Line::from(""));
-            }
-            lines.push(Line::from(Span::styled(
-                c.repo.clone(),
-                Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
-            )));
-            last_repo = Some(c.repo.as_str());
+    // One heading per repo (order = first appearance in the newest-first list).
+    let mut repo_order: Vec<&str> = Vec::new();
+    for c in entries {
+        if !repo_order.iter().any(|r| *r == c.repo.as_str()) {
+            repo_order.push(c.repo.as_str());
         }
-        let ago = relative_time(c.when);
-        let time_style = Style::default().fg(time_color(theme, c.when));
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{} ", short_hash(&c.hash)),
-                Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("- ".to_string(), Style::default().fg(theme.muted)),
-            Span::styled(
-                format!("{} ", truncate(&c.subject, 56)),
-                Style::default().fg(theme.subject),
-            ),
-            Span::styled(format!("({ago})"), time_style),
-        ]));
+    }
+
+    let mut lines = Vec::new();
+    let mut remaining = 60usize;
+    for (i, repo) in repo_order.iter().enumerate() {
+        if remaining == 0 {
+            break;
+        }
+        if i > 0 {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(Span::styled(
+            (*repo).to_string(),
+            Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+        )));
+        for c in entries.iter().filter(|c| c.repo.as_str() == *repo) {
+            if remaining == 0 {
+                break;
+            }
+            remaining -= 1;
+            let ago = relative_time(c.when);
+            let time_style = Style::default().fg(time_color(theme, c.when));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{} ", short_hash(&c.hash)),
+                    Style::default().fg(theme.hash).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("- ".to_string(), Style::default().fg(theme.muted)),
+                Span::styled(
+                    format!("{} ", truncate(&c.subject, 56)),
+                    Style::default().fg(theme.subject),
+                ),
+                Span::styled(format!("({ago})"), time_style),
+            ]));
+        }
     }
     lines
 }
