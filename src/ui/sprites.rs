@@ -119,16 +119,16 @@ const BUNNY_TINY: &[&str] = &[
 ];
 
 const LLAMA_TINY: &[&str] = &[
-    ".......K.K..",
-    "......KCKCK.",
-    "......KCKCCK",
-    "......KCCKK.",
-    "......KCCK..",
-    "KKKKKKKCCK..",
-    "KCRYTRYCCK..",
-    "KCCCCCCCCK..",
-    ".KCK..KCK...",
-    ".KKK..KKK...",
+    "..K..K.......",
+    ".KpKKpK......",
+    "KCKCCCK......",
+    "KpCCCCK......",
+    ".KKKCCK....K.",
+    "...KCCKKKKKCK",
+    "...KCRYTRYTCK",
+    "...KCCCCCCCCK",
+    "....KCKKKKCK.",
+    "....KKK..KKK.",
 ];
 
 const CAT: &[&str] = &[
@@ -167,23 +167,46 @@ const BUNNY: &[&str] = &[
 ];
 
 const LLAMA: &[&str] = &[
-    "..........K.K...",
-    ".........KCKCK..",
-    ".........KCCCK..",
-    ".........KCKCCK.",
-    ".........KCCCCCK",
-    ".........KCCKKK.",
-    ".........KCCK...",
-    ".........KCCK...",
-    ".KKKKKKKKKCCK...",
-    "KCCCCCCCCCCCK...",
-    "KCRYTRYTRYCCK...",
-    "KCRYTRYTRYCCK...",
-    "KCCCCCCCCCCCK...",
-    ".KCCKKKKKKCCK...",
-    ".KCK.....KCK....",
-    ".KCK.....KCK....",
-    ".KKK.....KKK....",
+    "....K...K............",
+    "...KpK.KpK...........",
+    "...KpKKKpK...........",
+    "..KCCCCCCK...........",
+    ".KCCKCCCCK...........",
+    "KCCCCCCCCK...........",
+    "KpCCCCCCCK...........",
+    ".KKKKCCCCK...........",
+    "....KCCCCK...........",
+    "....KCCCCK...........",
+    "....KCCCCK........KK.",
+    "....KCCCCKKKKKKKKKCCK",
+    "...KCCCCCCCCCCCCCCCCK",
+    "...KCRYTRYTRYTRYTRCCK",
+    "...KCRYTRYTRYTRYTRCCK",
+    "...KCCCCCCCCCCCCCCCCK",
+    "....KCCKKKKKKKKKKCCK.",
+    "....KCCK........KCCK.",
+    "....KCCK........KCCK.",
+    "....KKKK........KKKK.",
+];
+
+const LLAMA_SMALL: &[&str] = &[
+    "...K..K..........",
+    "..KpKKpK.........",
+    "..KCCCCK.........",
+    ".KCKCCCK.........",
+    "KCCCCCCK.........",
+    "KpCCCCCK.........",
+    ".KKKCCCK.........",
+    "...KCCCK.........",
+    "...KCCCK......KK.",
+    "...KCCCKKKKKKKCCK",
+    "..KCCCCCCCCCCCCCK",
+    "..KCRYTRYTRYTRCCK",
+    "..KCRYTRYTRYTRCCK",
+    "..KCCCCCCCCCCCCCK",
+    "...KCCKKKKKKKCCK.",
+    "...KCCK.....KCCK.",
+    "...KKKK.....KKKK.",
 ];
 
 /// A pixel grid with an anchor: the column of the head's top-left outline pixel,
@@ -240,7 +263,11 @@ pub fn creature(animal: Animal) -> Vec<Sprite> {
     match animal {
         Animal::Cat => vec![Sprite::from_map(CAT), Sprite::from_map(CAT_TINY)],
         Animal::Bunny => vec![Sprite::from_map(BUNNY), Sprite::from_map(BUNNY_TINY)],
-        Animal::Llama => vec![Sprite::from_map(LLAMA), Sprite::from_map(LLAMA_TINY)],
+        Animal::Llama => vec![
+            Sprite::from_map(LLAMA),
+            Sprite::from_map(LLAMA_SMALL),
+            Sprite::from_map(LLAMA_TINY),
+        ],
         Animal::Parrot => vec![
             Sprite::from_map(PARROT_LARGE),
             Sprite::from_map(PARROT_SMALL),
@@ -319,6 +346,7 @@ mod tests {
             BUNNY,
             BUNNY_TINY,
             LLAMA,
+            LLAMA_SMALL,
             LLAMA_TINY,
         ] {
             let w = map[0].chars().count();
@@ -342,6 +370,14 @@ mod tests {
         let big = fit(&creature(Animal::Cat), 60, 30).expect("fits");
         assert_eq!(big.cols, 48);
         assert_eq!(big.lines.len(), 21);
+    }
+
+    #[test]
+    fn llama_faces_left() {
+        for map in [LLAMA, LLAMA_SMALL, LLAMA_TINY] {
+            let llama = Sprite::from_map(map);
+            assert!(llama.anchor_x < llama.width / 2);
+        }
     }
 
     #[test]
