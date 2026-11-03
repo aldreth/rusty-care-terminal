@@ -8,10 +8,11 @@ use ratatui::text::{Line, Span};
 use crate::theme::Theme;
 use crate::ui::sprites;
 
-/// Speech bubble + character as half-block pixel art (or a custom image/text file).
+/// Speech bubble + chunky half-block pixel character (or a custom image/text file).
 ///
-/// Built-ins: `parrot` (default), `bunny`, `llama`, `cat`, `RANDOM`.
-/// Custom: path to a `.png`/`.jpg`/`.jpeg` (half-block rendered) or any text/`.ansi`/`.cow` file.
+/// Built-ins are hand-pixelled sprites (`parrot`, `bunny`, `llama`, `cat`, `RANDOM`)
+/// scaled only by integer factors so they stay blocky. Custom: path to a
+/// `.png`/`.jpg`/`.jpeg` (half-block rendered) or any text/`.ansi`/`.cow` file.
 pub fn say_box_lines(
     character: &str,
     message: &str,
