@@ -1,6 +1,6 @@
 //! Say-box creatures as outlined pixel sprites, drawn with half-blocks (▀ ▄ █).
 //!
-//! Each creature has hand-drawn size variants. Layout picks the biggest variant
+//! Each creature has hand-drawn size variants. Layout picks the tallest variant
 //! and integer scale that fits, so pixels stay square and crisp at any terminal
 //! size instead of being resampled into mush.
 //!
@@ -166,6 +166,36 @@ const BUNNY: &[&str] = &[
     ".KKKKKKKKKKKK...",
 ];
 
+const LLAMA_XL: &[&str] = &[
+    ".....K....K.................",
+    "....KpK..KpK................",
+    "....KpK..KpK................",
+    "...KKpKKKKpKK...............",
+    "..KCCCCCCCCCK...............",
+    "..KCCCCCCCCCK...............",
+    ".KCCKKCCCCCCK...............",
+    "KCCCKKCCCCCCK...............",
+    "KpCCCCCCCCCCK...............",
+    "KCCCCCCCCCCCK...............",
+    ".KKKKCCCCCCCK...............",
+    "....KCCCCCCCK...............",
+    "....KCCCCCCCK...............",
+    "....KCCCCCCCK...............",
+    "....KCCCCCCCK...........KKK.",
+    "....KCCCCCCCKKKKKKKKKKKKCCCK",
+    "...KCCCCCCCCCCCCCCCCCCCCCCCK",
+    "...KCCRRYYTTRRYYTTRRYYTTCCCK",
+    "...KCCRRYYTTRRYYTTRRYYTTCCCK",
+    "...KCCRRYYTTRRYYTTRRYYTTCCCK",
+    "...KCCCCCCCCCCCCCCCCCCCCCCCK",
+    "...KCCCCCCCCCCCCCCCCCCCCCCCK",
+    "....KCCCKKKKKKKKKKKKKKKCCCK.",
+    "....KCCCK.............KCCCK.",
+    "....KCCCK.............KCCCK.",
+    "....KCCCK.............KCCCK.",
+    "....KKKKK.............KKKKK.",
+];
+
 const LLAMA: &[&str] = &[
     "....K...K............",
     "...KpK.KpK...........",
@@ -264,6 +294,7 @@ pub fn creature(animal: Animal) -> Vec<Sprite> {
         Animal::Cat => vec![Sprite::from_map(CAT), Sprite::from_map(CAT_TINY)],
         Animal::Bunny => vec![Sprite::from_map(BUNNY), Sprite::from_map(BUNNY_TINY)],
         Animal::Llama => vec![
+            Sprite::from_map(LLAMA_XL),
             Sprite::from_map(LLAMA),
             Sprite::from_map(LLAMA_SMALL),
             Sprite::from_map(LLAMA_TINY),
@@ -284,15 +315,29 @@ pub struct Placed {
     pub anchor_col: usize,
 }
 
-/// First variant (largest first) that fits, at its biggest integer scale (1–3).
-/// A hand-drawn variant always beats an upscaled smaller one.
+/// Within this share of the tallest fit, a less-upscaled variant wins, so
+/// hand-drawn detail beats chunky pixels without one animal shrinking next to
+/// another that happens to double neatly.
+const NEAR_TALLEST_PERCENT: usize = 85;
+
+/// The tallest variant × integer scale (1–3) that fits, preferring the lowest
+/// scale among candidates nearly as tall.
 pub fn fit(variants: &[Sprite], max_cols: usize, max_rows: usize) -> Option<Placed> {
-    let (sprite, scale) = variants.iter().find_map(|sprite| {
-        (1..=3)
-            .rev()
-            .find(|&s| sprite.cols(s) <= max_cols && sprite.rows(s) <= max_rows)
-            .map(|s| (sprite, s))
-    })?;
+    let candidates: Vec<(&Sprite, usize)> = variants
+        .iter()
+        .flat_map(|sprite| (1..=3).map(move |scale| (sprite, scale)))
+        .filter(|(sprite, scale)| {
+            sprite.cols(*scale) <= max_cols && sprite.rows(*scale) <= max_rows
+        })
+        .collect();
+    let tallest = candidates
+        .iter()
+        .map(|(sprite, scale)| sprite.rows(*scale))
+        .max()?;
+    let (sprite, scale) = candidates
+        .into_iter()
+        .filter(|(sprite, scale)| sprite.rows(*scale) * 100 >= tallest * NEAR_TALLEST_PERCENT)
+        .min_by_key(|(sprite, scale)| (*scale, std::cmp::Reverse(sprite.rows(*scale))))?;
     Some(Placed {
         lines: halfblocks(sprite, scale),
         cols: sprite.cols(scale),
@@ -345,6 +390,7 @@ mod tests {
             CAT_TINY,
             BUNNY,
             BUNNY_TINY,
+            LLAMA_XL,
             LLAMA,
             LLAMA_SMALL,
             LLAMA_TINY,
@@ -374,9 +420,24 @@ mod tests {
 
     #[test]
     fn llama_faces_left() {
-        for map in [LLAMA, LLAMA_SMALL, LLAMA_TINY] {
+        for map in [LLAMA_XL, LLAMA, LLAMA_SMALL, LLAMA_TINY] {
             let llama = Sprite::from_map(map);
             assert!(llama.anchor_x < llama.width / 2);
+        }
+    }
+
+    #[test]
+    fn llama_is_as_big_as_the_others() {
+        for rows in 14..=30 {
+            let height = |animal| fit(&creature(animal), 60, rows).expect("fits").lines.len();
+            let llama = height(Animal::Llama);
+            for animal in Animal::ALL {
+                let other = height(animal);
+                assert!(
+                    llama * 100 >= other * 85,
+                    "llama {llama} vs {animal:?} {other} at {rows} rows"
+                );
+            }
         }
     }
 
