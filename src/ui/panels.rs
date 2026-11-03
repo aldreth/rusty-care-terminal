@@ -327,67 +327,40 @@ fn draw_care_panel(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    match app.care.get(index) {
-        Some(msg) => {
-            let mut y = inner.y;
-            let mut height = inner.height;
-            if let Some(label) = friendly_care_label(&msg.source_label) {
-                if height > 0 {
-                    render_acct_label(
-                        frame.buffer_mut(),
-                        Rect {
-                            x: inner.x,
-                            y,
-                            width: inner.width,
-                            height: 1,
-                        },
-                        &label,
-                        theme,
-                    );
-                    y = y.saturating_add(1);
-                    height = height.saturating_sub(1);
-                }
-                if height > 0 {
-                    // Blank line under the account, matching prior layout.
-                    y = y.saturating_add(1);
-                    height = height.saturating_sub(1);
-                }
-            }
-            if height > 0 {
-                frame.render_widget(
-                    Paragraph::new(Span::styled(
-                        msg.text.clone(),
-                        Style::default().fg(theme.fg),
-                    ))
-                    .style(theme.root_style())
-                    .wrap(Wrap { trim: true }),
-                    Rect {
-                        x: inner.x,
-                        y,
-                        width: inner.width,
-                        height,
-                    },
-                );
-            }
-        }
-        None if app.loading => {
-            frame.render_widget(
-                Paragraph::new(Span::styled("loading care…", theme.muted_style()))
-                    .style(theme.root_style()),
-                inner,
-            );
-        }
-        None => {
-            frame.render_widget(
-                Paragraph::new(Span::styled(
-                    mock::DEFAULT_MESSAGE,
-                    Style::default().fg(theme.fg),
-                ))
-                .style(theme.root_style()),
-                inner,
-            );
-        }
+    let mut body = inner;
+    if let Some(label) = app
+        .care_label(index)
+        .as_deref()
+        .and_then(friendly_care_label)
+    {
+        let label_row = take_rows(&mut body, 1);
+        render_acct_label(frame.buffer_mut(), label_row, &label, theme);
+        take_rows(&mut body, 1);
+    }
+
+    let text = match app.care.get(index) {
+        Some(msg) => Span::styled(msg.text.clone(), Style::default().fg(theme.fg)),
+        None if app.loading => Span::styled("loading care…", theme.muted_style()),
+        None => Span::styled(mock::DEFAULT_MESSAGE, Style::default().fg(theme.fg)),
     };
+    frame.render_widget(
+        Paragraph::new(text)
+            .style(theme.root_style())
+            .wrap(Wrap { trim: true }),
+        body,
+    );
+}
+
+/// Splits up to `rows` off the top of `area`, returning them.
+fn take_rows(area: &mut Rect, rows: u16) -> Rect {
+    let taken = rows.min(area.height);
+    let top = Rect {
+        height: taken,
+        ..*area
+    };
+    area.y += taken;
+    area.height -= taken;
+    top
 }
 
 /// `@user@host` labels are shown; feed URLs and empty slots get no label line.
@@ -442,52 +415,22 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         return;
     }
 
-    let source = app
-        .care
-        .first()
-        .and_then(|m| friendly_care_label(&m.source_label));
-
     let block = border_block("", theme);
-    let inner = block.inner(area);
+    let mut body = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut y = inner.y;
-    let mut height = inner.height;
-    if let Some(label) = source
-        && height > 0
-    {
-        render_acct_label(
-            frame.buffer_mut(),
-            Rect {
-                x: inner.x,
-                y,
-                width: inner.width,
-                height: 1,
-            },
-            &label,
-            theme,
-        );
-        y = y.saturating_add(1);
-        height = height.saturating_sub(1);
+    if let Some(label) = app.care_label(0).as_deref().and_then(friendly_care_label) {
+        let label_row = take_rows(&mut body, 1);
+        render_acct_label(frame.buffer_mut(), label_row, &label, theme);
     }
     let lines = art::say_box_lines(
         app.current_animal(),
         app.say_box_message(),
-        inner.width as usize,
-        height as usize,
+        body.width as usize,
+        body.height as usize,
         theme,
     );
-    if height > 0 {
-        frame.render_widget(
-            Paragraph::new(lines).style(theme.root_style()),
-            Rect {
-                x: inner.x,
-                y,
-                width: inner.width,
-                height,
-            },
-        );
-    }
+    frame.render_widget(Paragraph::new(lines).style(theme.root_style()), body);
 }
 
 fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {

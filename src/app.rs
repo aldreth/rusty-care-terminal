@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::config::{Config, MAX_BREAK_MINS, MAX_POMODORO_MINS};
-use crate::model::{Animal, CareMessage, CommitStats, WeatherSnapshot};
+use crate::model::{Animal, CareMessage, CareSource, CommitStats, WeatherSnapshot};
 use crate::services::{self, Snapshot, mock};
 use crate::theme::Theme;
 
@@ -151,6 +151,12 @@ impl App {
             .first()
             .map(|m| m.text.as_str())
             .unwrap_or(mock::DEFAULT_MESSAGE)
+    }
+
+    /// Label for care slot `index`, known from config before the first fetch lands
+    /// so the panels don't shift when messages arrive.
+    pub fn care_label(&self, index: usize) -> Option<String> {
+        self.config.care_sources().get(index).map(CareSource::label)
     }
 
     pub fn current_animal(&self) -> Animal {
@@ -343,6 +349,22 @@ mod tests {
         wait_for_refresh(&mut app);
         assert_eq!(app.care.len(), crate::model::CARE_SLOTS);
         assert_eq!(app.warning, None);
+    }
+
+    #[test]
+    fn care_labels_are_known_before_the_first_refresh() {
+        let app = offline_app();
+        assert!(app.care.is_empty());
+        let labels: Vec<_> = (0..crate::model::CARE_SLOTS)
+            .map(|i| app.care_label(i))
+            .collect();
+        let expected: Vec<_> = app
+            .config
+            .care_sources()
+            .iter()
+            .map(|s| Some(s.label()))
+            .collect();
+        assert_eq!(labels, expected);
     }
 
     #[test]
