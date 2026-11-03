@@ -133,7 +133,7 @@ const CAT: &[&str] = &[
     "..GHHHHHHHHHHHHG......",
     ".GHHWWHHHHHHWWHHG.....",
     ".GHHKWHHHHHHWKHHG.....",
-    "G.G.HHHHMMHHHH.G.G....",
+    "G..GHHHHMMHHHHG..G....",
     ".GHHHHHHHHHHHHHHG.....",
     "..GHHHHHHHHHHHHG......",
     "...GGHHHHHHHHGG.......",
