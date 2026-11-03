@@ -260,12 +260,13 @@ fn draw_chart(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 }
 
 fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
-    let title = app
-        .weather
-        .as_ref()
-        .map(|w| w.place.as_str())
-        .or(app.config.weather.as_deref())
-        .unwrap_or("☀️");
+    let title = match (
+        app.weather.as_ref().map(|w| w.place.as_str()),
+        app.config.weather.as_deref(),
+    ) {
+        (Some(place), _) | (None, Some(place)) => format!("☀️ {place}"),
+        (None, None) => "☀️".to_string(),
+    };
 
     let lines = if app.loading && app.weather.is_none() {
         vec![Line::from(Span::styled(
