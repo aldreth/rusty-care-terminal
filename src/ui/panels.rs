@@ -473,40 +473,33 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 
     let mut y = inner.y;
     let mut height = inner.height;
-    if let Some(label) = source {
-        if height > 0 {
-            render_acct_label(
-                frame.buffer_mut(),
-                Rect {
-                    x: inner.x,
-                    y,
-                    width: inner.width,
-                    height: 1,
-                },
-                &label,
-                theme,
-            );
-            y = y.saturating_add(1);
-            height = height.saturating_sub(1);
-        }
-        if height > 0 {
-            y = y.saturating_add(1);
-            height = height.saturating_sub(1);
-        }
+    if let Some(label) = source
+        && height > 0
+    {
+        render_acct_label(
+            frame.buffer_mut(),
+            Rect {
+                x: inner.x,
+                y,
+                width: inner.width,
+                height: 1,
+            },
+            &label,
+            theme,
+        );
+        y = y.saturating_add(1);
+        height = height.saturating_sub(1);
     }
-    let art_budget = height as usize;
     let lines = art::say_box_lines(
         &app.config.say_box,
         msg,
         inner.width as usize,
-        art_budget.max(6),
+        height as usize,
         theme,
     );
     if height > 0 {
         frame.render_widget(
-            Paragraph::new(lines)
-                .style(theme.root_style())
-                .wrap(Wrap { trim: false }),
+            Paragraph::new(lines).style(theme.root_style()),
             Rect {
                 x: inner.x,
                 y,

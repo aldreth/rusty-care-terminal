@@ -1,19 +1,18 @@
-//! Say-box characters as hand-pixelled sprites, shown with Unicode half-blocks (▀/▄/█).
+//! Say-box creatures as outlined pixel sprites, drawn with half-blocks (▀ ▄ █).
 //!
-//! Art is drawn at a fixed native size and only scaled by **integer** factors (or
-//! shrunk to fit). That keeps a chunky computery look instead of stretching tiny
-//! silhouettes into mush. Custom images still use the same half-block path.
+//! Each creature has hand-drawn size variants. Layout picks the biggest variant
+//! and integer scale that fits, so pixels stay square and crisp at any terminal
+//! size instead of being resampled into mush.
 //!
-//! Map legend:
-//! `.` empty · `B` body · `D` body shade · `W` white · `K` black · `M` magenta
-//! `Y` yellow · `R` red · `O` orange · `C` cream · `N` brown · `G` gray · `P` pink
-//! `A` cream shade · `H` gray shade
+//! Map legend: `.` transparent · `K` outline · `B` parrot blue · `P` beak ·
+//! `O` cat orange · `W` white · `p` pink · `C` llama cream · `R` red ·
+//! `Y` yellow · `T` teal
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct Rgb(u8, u8, u8);
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Rgb(pub u8, pub u8, pub u8);
 
 impl Rgb {
     fn color(self) -> Color {
@@ -21,234 +20,305 @@ impl Rgb {
     }
 }
 
-const CYAN: Rgb = Rgb(64, 212, 232);
-const CYAN_D: Rgb = Rgb(28, 150, 180);
-const WHITE: Rgb = Rgb(248, 248, 252);
-const BLACK: Rgb = Rgb(18, 18, 24);
-const MAGENTA: Rgb = Rgb(255, 80, 170);
-const YELLOW: Rgb = Rgb(255, 214, 64);
-const ORANGE: Rgb = Rgb(255, 140, 48);
-const RED: Rgb = Rgb(240, 64, 64);
-const CREAM: Rgb = Rgb(255, 228, 196);
-const CREAM_D: Rgb = Rgb(220, 180, 140);
-const BROWN: Rgb = Rgb(150, 90, 50);
-const GRAY: Rgb = Rgb(170, 176, 188);
-const GRAY_D: Rgb = Rgb(110, 116, 128);
-const PINK: Rgb = Rgb(255, 160, 190);
-
-fn map_char(ch: char, body: Rgb, shade: Rgb) -> Option<Rgb> {
+fn palette(ch: char) -> Option<Rgb> {
     match ch {
-        'B' | '#' => Some(body),
-        'D' => Some(shade),
-        'W' => Some(WHITE),
-        'K' => Some(BLACK),
-        'M' => Some(MAGENTA),
-        'Y' => Some(YELLOW),
-        'O' => Some(ORANGE),
-        'R' => Some(RED),
-        'C' => Some(CREAM),
-        'N' => Some(BROWN),
-        'G' => Some(GRAY),
-        'P' => Some(PINK),
-        'A' => Some(CREAM_D),
-        'H' => Some(GRAY_D),
+        'K' => Some(Rgb(20, 20, 24)),
+        'B' => Some(Rgb(98, 178, 255)),
+        'P' => Some(Rgb(178, 92, 128)),
+        'O' => Some(Rgb(255, 160, 64)),
+        'W' => Some(Rgb(240, 240, 245)),
+        'p' => Some(Rgb(255, 150, 180)),
+        'C' => Some(Rgb(245, 225, 190)),
+        'R' => Some(Rgb(230, 70, 80)),
+        'Y' => Some(Rgb(255, 205, 60)),
+        'T' => Some(Rgb(40, 190, 180)),
         _ => None,
     }
 }
 
-/// Side-view party parrot: one eye, chunky beak sticking out, wing, perch feet.
-const PARROT: &[&str] = &[
-    "............................",
-    ".......BBBBBBB..............",
-    ".....BBBBBBBBBBB............",
-    "....BBBBBBBBBBBBB...........",
-    "....BBBWWBBBBBBBBB..........",
-    "....BBBKWBBBBBBBBB..........",
-    "....BBBBBBMMBBBBBB..........",
-    ".....BBBBBMMMOYBBB..........",
-    "......BBBBMMMOYYBB..........",
-    ".......BBBMMMYYYB...........",
-    "......BBBBBBBBBBBB..........",
-    ".....BBBBBBBBBBBBBB.........",
-    "....BBBBBBDDDBBBBBBB........",
-    "...BBBBBBBDDDBBBBBBBB.......",
-    "...BBBBBBBDDDBBBBBBBB.......",
-    "....BBBBBBDDDBBBBBBB........",
-    ".....BBBBBBBBBBBBBB.........",
-    "......BBBBBBBBBBBB..........",
-    ".......BBBRRRBBB............",
-    "........B.R..R.B............",
-    "........N......N............",
+/// The classic party parrot from the original tiny-care-terminal screenshot.
+const PARROT_LARGE: &[&str] = &[
+    ".......KKKKKKKK.................",
+    "......KKBBBBBBKKK...............",
+    ".....KKBBBBBBBBBKK..............",
+    "....KKBBBBBBBBBBBK..............",
+    "...KKBBBBBBBBBBBBKK.............",
+    "..KKBBBKBBBKKKBBKBK.............",
+    "..KBBBBKBBKPPPKBKBK.............",
+    ".KKBBBBBBKPPPPPKBBKK............",
+    ".KBBBBBBBKPPPPPKBBBKK...........",
+    "KKBBBBBBBKPPPPPKBBBBK...........",
+    "KBBBBBBBBKPPPPPKBBBBK...........",
+    "KBBBBBBBBKPPPPPKBBBBK...........",
+    "KBBBBBBBBKPPPPPKBBBBK...........",
+    "KBBBBBBBBBKPPPKBBBBBK...........",
+    "KBBBBBBBBBKPPPKBBBBBK...........",
+    "KBBBBBBBBBBKKKBBBBBBKK..........",
+    "KBBBBBBBBBBBKBBBBBBBBKK.........",
+    "KKBBBBBBBBBBBBBBBBBBBBKK........",
+    ".KBBBBBBBBBBBBBBBBBBBBBKKK......",
+    ".KBBBBBBBBBBBBBBBBBBBBBBBKK.....",
+    ".KBKKBBBBBBBBBBBBBBBBBBBBBKKK...",
+    ".KBBKKKKKBBBBBBBBBBBBBBBBBBBKK..",
+    ".KBBBBBKKKKBBBBBBBBBBBBBBBBBBKKK",
+    ".KBBBBBBBBBBBBBBBBBBBBBBBBBBBBBK",
+    ".KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 ];
 
-/// Front bunny with long ears, round face, pink nose, small chest.
-const BUNNY: &[&str] = &[
-    "......................",
-    "...BB........BB.......",
-    "..BPPB......BPPB......",
-    "..BPPB......BPPB......",
-    "..BPPB......BPPB......",
-    "..BPPB......BPPB......",
-    "...BBB......BBB.......",
-    "....BBBBBBBBBB........",
-    "...BBWWBBBBWWBB.......",
-    "...BBKWBBBBKWBB.......",
-    "...BBBBPPBBBBBB.......",
-    "...BBBBBBBBBBBB.......",
-    "....BBBAAAABBB........",
-    ".....BBBBBABB.........",
-    "......BBBBBB..........",
+const PARROT_SMALL: &[&str] = &[
+    "....KKKKKKK.........",
+    "..KKBBBBBBBKK.......",
+    ".KBBBBBBBBBBBK......",
+    ".KBBBBBBBBBBBK......",
+    "KBBKBKKKKKBKBBK.....",
+    "KBBKBKPPPKBKBBK.....",
+    "KBBBBKPPPKBBBBK.....",
+    "KBBBBKPPPKBBBBK.....",
+    "KBBBBBKPKBBBBBKK....",
+    "KBBBBBBKBBBBBBBBK...",
+    "KBBBBBBBBBBBBBBBBK..",
+    "KBKKBBBBBBBBBBBBBBK.",
+    "KBBBKKBBBBBBBBBBBBBK",
+    "KKKKKKKKKKKKKKKKKKKK",
 ];
 
-/// Side llama: tall ears, one eye, cream muzzle, long neck, body, four legs.
-const LLAMA: &[&str] = &[
-    "........................",
-    ".............B...B......",
-    ".............B...B......",
-    "............BBBBBBB.....",
-    "...........BBWWBBBBB....",
-    "...........BBKWBBBBBK...",
-    "...........BBBBBBBBB....",
-    "............BBBBBBB.....",
-    ".............BBBB.......",
-    ".............BBB........",
-    ".............BBB........",
-    ".............BBB........",
-    ".............BBB........",
-    "......BBBBBBBBBBB.......",
-    ".....BBBBBBBBBBBBB......",
-    "....BBBBADDDDABBBBB.....",
-    "....BB..BB..BB..BB......",
-    "....BB..BB..BB..BB......",
-    "....NN..NN..NN..NN......",
+const PARROT_TINY: &[&str] = &[
+    "...KKKKKKK......",
+    ".KKBBBBBBBKK....",
+    "KBKBBKKKBBKBK...",
+    "KBKBBKPKBBKBK...",
+    "KBBBBKPKBBBBBK..",
+    "KBBBBBKBBBBBBBK.",
+    "KBKKBBBBBBBBBBBK",
+    "KKKKKKKKKKKKKKKK",
 ];
 
-/// Front cat: tall triangle ears, round head, nose, whiskers.
+const CAT_TINY: &[&str] = &[
+    ".K.......K..",
+    "KOK.....KOK.",
+    "KOpKKKKKpOK.",
+    "KOOOOOOOOOK.",
+    "KOKOOOOOKOK.",
+    "KOOOOpOOOOKK",
+    ".KWOOOOOWOKK",
+    ".KKKKKKKKKK.",
+];
+
+const BUNNY_TINY: &[&str] = &[
+    ".KK...KK..",
+    "KWpK.KpWK.",
+    "KWpK.KpWK.",
+    ".KWKKKWK..",
+    "KWWWWWWWK.",
+    "KWKWWWKWK.",
+    "KpWWKWWpK.",
+    "KWWWWWWWWK",
+    ".KKKKKKKK.",
+];
+
+const LLAMA_TINY: &[&str] = &[
+    ".......K.K..",
+    "......KCKCK.",
+    "......KCKCCK",
+    "......KCCKK.",
+    "......KCCK..",
+    "KKKKKKKCCK..",
+    "KCRYTRYCCK..",
+    "KCCCCCCCCK..",
+    ".KCK..KCK...",
+    ".KKK..KKK...",
+];
+
 const CAT: &[&str] = &[
-    "......................",
-    "..G............G......",
-    ".GHG..........GHG.....",
-    ".GHHG........GHHG.....",
-    ".GHHHG......GHHHG.....",
-    "..GHHHHHHHHHHHHG......",
-    ".GHHWWHHHHHHWWHHG.....",
-    ".GHHKWHHHHHHWKHHG.....",
-    "G..GHHHHMMHHHHG..G....",
-    ".GHHHHHHHHHHHHHHG.....",
-    "..GHHHHHHHHHHHHG......",
-    "...GGHHHHHHHHGG.......",
-    ".....GGGGGGGG.........",
+    ".K..........K...",
+    "KOK........KOK..",
+    "KOOK......KOOK..",
+    "KOpOKKKKKKOpOK..",
+    "KOOOOOOOOOOOOK..",
+    "KOOKOOOOOOKOOK..",
+    "KOOKOOOOOOKOOK..",
+    "KOOOOOKpKOOOOK..",
+    ".KOOOOOKOOOOK...",
+    "..KOOOOOOOOK....",
+    ".KOOOOOOOOOOK.KK",
+    "KOOWWOOOOWWOOKOK",
+    "KOOWWOOOOWWOOOK.",
+    ".KKKKKKKKKKKKK..",
 ];
 
-pub fn sprite_lines(name: &str, max_cols: usize, max_rows: usize) -> Vec<Line<'static>> {
-    let (map, body, shade) = match name {
-        "bunny" => (BUNNY, CREAM, CREAM_D),
-        "llama" => (LLAMA, CREAM, CREAM_D),
-        "cat" => (CAT, GRAY, GRAY_D),
-        _ => (PARROT, CYAN, CYAN_D),
-    };
-    let (w, h, pixels) = rasterize(map, body, shade);
-    let max_px_h = max_rows.saturating_mul(2).max(2);
-    let (tw, th) = fit_size(w, h, max_cols.max(4), max_px_h);
-    let scaled = scale_pixels(&pixels, w, h, tw, th);
-    let mut lines = halfblocks(&scaled, tw, th);
-    center_art(&mut lines, max_cols, max_rows);
-    lines
+const BUNNY: &[&str] = &[
+    "..KK....KK......",
+    ".KWpK..KpWK.....",
+    ".KWpK..KpWK.....",
+    ".KWpK..KpWK.....",
+    ".KWpK..KpWK.....",
+    "..KWKKKKWK......",
+    ".KWWWWWWWWK.....",
+    "KWWKWWWWKWWK....",
+    "KWWKWWWWKWWK....",
+    "KWpWWKpKWWpWK...",
+    ".KWWWWKWWWWK....",
+    ".KWWWWWWWWWWK...",
+    "KWWWWWWWWWWWWK..",
+    "KWWWWWWWWWWWWK..",
+    ".KKKKKKKKKKKK...",
+];
+
+const LLAMA: &[&str] = &[
+    "..........K.K...",
+    ".........KCKCK..",
+    ".........KCCCK..",
+    ".........KCKCCK.",
+    ".........KCCCCCK",
+    ".........KCCKKK.",
+    ".........KCCK...",
+    ".........KCCK...",
+    ".KKKKKKKKKCCK...",
+    "KCCCCCCCCCCCK...",
+    "KCRYTRYTRYCCK...",
+    "KCRYTRYTRYCCK...",
+    "KCCCCCCCCCCCK...",
+    ".KCCKKKKKKCCK...",
+    ".KCK.....KCK....",
+    ".KCK.....KCK....",
+    ".KKK.....KKK....",
+];
+
+pub const CREATURES: [&str; 4] = ["parrot", "cat", "bunny", "llama"];
+
+/// A pixel grid with an anchor: the column of the head's top-left outline pixel,
+/// where the speech-bubble tail lands.
+#[derive(Clone)]
+pub struct Sprite {
+    width: usize,
+    height: usize,
+    pixels: Vec<Option<Rgb>>,
+    anchor_x: usize,
 }
 
-fn rasterize(map: &[&str], body: Rgb, shade: Rgb) -> (usize, usize, Vec<Option<Rgb>>) {
-    let h = map.len();
-    let w = map.iter().map(|r| r.chars().count()).max().unwrap_or(0);
-    let mut pixels = vec![None; w * h];
-    for (y, row) in map.iter().enumerate() {
-        for (x, ch) in row.chars().enumerate() {
-            pixels[y * w + x] = map_char(ch, body, shade);
-        }
-    }
-    (w, h, pixels)
-}
-
-/// Prefer integer upscale; only shrink when the native sprite cannot fit.
-fn fit_size(src_w: usize, src_h: usize, max_cols: usize, max_px_h: usize) -> (usize, usize) {
-    if src_w == 0 || src_h == 0 {
-        return (1, 1);
-    }
-    let max_cols = max_cols.max(1);
-    let max_px_h = max_px_h.max(1);
-
-    let up_w = max_cols / src_w;
-    let up_h = max_px_h / src_h;
-    let up = up_w.min(up_h);
-    if up >= 1 {
-        let up = up.min(3);
-        return (src_w * up, src_h * up);
-    }
-
-    let scale = (max_cols as f32 / src_w as f32).min(max_px_h as f32 / src_h as f32);
-    let tw = ((src_w as f32) * scale).floor().max(1.0) as usize;
-    let th = ((src_h as f32) * scale).floor().max(1.0) as usize;
-    (tw.min(max_cols).max(1), th.min(max_px_h).max(1))
-}
-
-fn scale_pixels(
-    src: &[Option<Rgb>],
-    sw: usize,
-    sh: usize,
-    tw: usize,
-    th: usize,
-) -> Vec<Option<Rgb>> {
-    if tw == sw && th == sh {
-        return src.to_vec();
-    }
-    if tw.is_multiple_of(sw) && th.is_multiple_of(sh) {
-        let sx = tw / sw;
-        let sy = th / sh;
-        let mut out = vec![None; tw * th];
-        for y in 0..sh {
-            for x in 0..sw {
-                let p = src[y * sw + x];
-                for dy in 0..sy {
-                    for dx in 0..sx {
-                        out[(y * sy + dy) * tw + (x * sx + dx)] = p;
-                    }
-                }
+impl Sprite {
+    fn from_map(map: &[&str]) -> Self {
+        let height = map.len();
+        let width = map.iter().map(|r| r.chars().count()).max().unwrap_or(0);
+        let mut pixels = vec![None; width * height];
+        for (y, row) in map.iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                pixels[y * width + x] = palette(ch);
             }
         }
-        return out;
+        Self::new(width, height, pixels)
     }
-    let mut out = vec![None; tw * th];
-    for y in 0..th {
-        let sy = y * sh / th;
-        for x in 0..tw {
-            let sx = x * sw / tw;
-            out[y * tw + x] = src[sy * sw + sx];
+
+    fn new(width: usize, height: usize, pixels: Vec<Option<Rgb>>) -> Self {
+        let anchor_x = (0..width)
+            .find(|&x| pixels.get(x).copied().flatten().is_some())
+            .unwrap_or(width / 2);
+        Self {
+            width,
+            height,
+            pixels,
+            anchor_x,
         }
     }
-    out
-}
 
-fn halfblocks(pixels: &[Option<Rgb>], width: usize, height: usize) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    let mut y = 0;
-    while y < height {
-        let mut spans = Vec::with_capacity(width);
-        for x in 0..width {
-            let top = pixels[y * width + x];
-            let bot = if y + 1 < height {
-                pixels[(y + 1) * width + x]
-            } else {
-                None
-            };
-            spans.push(halfblock_span(top, bot));
+    /// Build from RGBA bytes, shrinking (nearest neighbour) only if larger than `max_px`.
+    pub fn from_rgba(rgba: &[u8], width: u32, height: u32, max_px: (usize, usize)) -> Self {
+        let sw = width as usize;
+        let sh = height as usize;
+        let mut src = vec![None; sw * sh];
+        for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate().take(sw * sh) {
+            if px[3] >= 128 {
+                src[i] = Some(Rgb(px[0], px[1], px[2]));
+            }
         }
-        lines.push(Line::from(spans));
-        y += 2;
+        let (mw, mh) = (max_px.0.max(1), max_px.1.max(1));
+        if sw <= mw && sh <= mh {
+            return Self::new(sw, sh, src);
+        }
+        let scale = (mw as f32 / sw as f32).min(mh as f32 / sh as f32);
+        let tw = ((sw as f32 * scale).floor() as usize).max(1);
+        let th = ((sh as f32 * scale).floor() as usize).max(1);
+        let mut out = vec![None; tw * th];
+        for y in 0..th {
+            for x in 0..tw {
+                out[y * tw + x] = src[(y * sh / th) * sw + (x * sw / tw)];
+            }
+        }
+        Self::new(tw, th, out)
     }
-    lines
+
+    fn rows(&self, scale: usize) -> usize {
+        (self.height * scale).div_ceil(2)
+    }
+
+    fn cols(&self, scale: usize) -> usize {
+        self.width * scale
+    }
+
+    fn pixel(&self, x: usize, y: usize, scale: usize) -> Option<Rgb> {
+        let (sx, sy) = (x / scale, y / scale);
+        if sx < self.width && sy < self.height {
+            self.pixels[sy * self.width + sx]
+        } else {
+            None
+        }
+    }
 }
 
-fn halfblock_span(top: Option<Rgb>, bot: Option<Rgb>) -> Span<'static> {
-    match (top, bot) {
+/// Hand-drawn variants for a creature, largest first.
+pub fn creature(name: &str) -> Vec<Sprite> {
+    match name {
+        "cat" => vec![Sprite::from_map(CAT), Sprite::from_map(CAT_TINY)],
+        "bunny" => vec![Sprite::from_map(BUNNY), Sprite::from_map(BUNNY_TINY)],
+        "llama" => vec![Sprite::from_map(LLAMA), Sprite::from_map(LLAMA_TINY)],
+        _ => vec![
+            Sprite::from_map(PARROT_LARGE),
+            Sprite::from_map(PARROT_SMALL),
+            Sprite::from_map(PARROT_TINY),
+        ],
+    }
+}
+
+/// A sprite laid out in terminal cells.
+pub struct Placed {
+    pub lines: Vec<Line<'static>>,
+    pub cols: usize,
+    /// Cell column (from the sprite's left edge) where the bubble tail should land.
+    pub anchor_col: usize,
+}
+
+/// First variant (largest first) that fits, at its biggest integer scale (1–3).
+/// A hand-drawn variant always beats an upscaled smaller one.
+pub fn fit(variants: &[Sprite], max_cols: usize, max_rows: usize) -> Option<Placed> {
+    let (sprite, scale) = variants.iter().find_map(|sprite| {
+        (1..=3)
+            .rev()
+            .find(|&s| sprite.cols(s) <= max_cols && sprite.rows(s) <= max_rows)
+            .map(|s| (sprite, s))
+    })?;
+    Some(Placed {
+        lines: halfblocks(sprite, scale),
+        cols: sprite.cols(scale),
+        anchor_col: sprite.anchor_x * scale,
+    })
+}
+
+fn halfblocks(sprite: &Sprite, scale: usize) -> Vec<Line<'static>> {
+    let width = sprite.cols(scale);
+    let height = sprite.height * scale;
+    (0..height)
+        .step_by(2)
+        .map(|y| {
+            let spans: Vec<Span<'static>> = (0..width)
+                .map(|x| cell(sprite.pixel(x, y, scale), sprite.pixel(x, y + 1, scale)))
+                .collect();
+            Line::from(spans)
+        })
+        .collect()
+}
+
+fn cell(top: Option<Rgb>, bottom: Option<Rgb>) -> Span<'static> {
+    match (top, bottom) {
         (Some(t), Some(b)) if t == b => Span::styled("█", Style::default().fg(t.color())),
         (Some(t), Some(b)) => Span::styled("▀", Style::default().fg(t.color()).bg(b.color())),
         (Some(t), None) => Span::styled("▀", Style::default().fg(t.color())),
@@ -257,98 +327,56 @@ fn halfblock_span(top: Option<Rgb>, bot: Option<Rgb>) -> Span<'static> {
     }
 }
 
-fn center_art(lines: &mut Vec<Line<'static>>, max_cols: usize, max_rows: usize) {
-    if lines.is_empty() {
-        return;
-    }
-    let art_w = lines
-        .iter()
-        .map(|l| l.spans.iter().map(|s| s.content.chars().count()).sum::<usize>())
-        .max()
-        .unwrap_or(0);
-    let pad_left = max_cols.saturating_sub(art_w) / 2;
-    if pad_left > 0 {
-        let pad = " ".repeat(pad_left);
-        for line in lines.iter_mut() {
-            let mut spans = vec![Span::raw(pad.clone())];
-            spans.append(&mut line.spans);
-            *line = Line::from(spans);
-        }
-    }
-    let pad_top = max_rows.saturating_sub(lines.len()) / 2;
-    if pad_top > 0 {
-        let mut padded = vec![Line::from(""); pad_top];
-        padded.append(lines);
-        *lines = padded;
-    }
-}
-
-/// Convert an RGBA image buffer into half-block lines (custom `RCT_SAY_BOX` images).
-pub fn rgba_to_halfblocks(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-    max_cols: usize,
-    max_rows: usize,
-) -> Vec<Line<'static>> {
-    let sw = width as usize;
-    let sh = height as usize;
-    let mut pixels = vec![None; sw * sh];
-    for y in 0..sh {
-        for x in 0..sw {
-            let i = (y * sw + x) * 4;
-            if i + 3 >= rgba.len() {
-                continue;
-            }
-            let a = rgba[i + 3];
-            if a < 128 {
-                continue;
-            }
-            pixels[y * sw + x] = Some(Rgb(rgba[i], rgba[i + 1], rgba[i + 2]));
-        }
-    }
-    let max_px_h = max_rows.saturating_mul(2).max(2);
-    let (tw, th) = fit_size(sw, sh, max_cols.max(4), max_px_h);
-    let scaled = scale_pixels(&pixels, sw, sh, tw, th);
-    let mut lines = halfblocks(&scaled, tw, th);
-    center_art(&mut lines, max_cols, max_rows);
-    lines
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parrot_renders_nonempty() {
-        let lines = sprite_lines("parrot", 40, 14);
-        assert!(lines.len() >= 6);
-        let has_block = lines.iter().any(|l| {
-            l.spans.iter().any(|s| {
-                s.content.contains('▀') || s.content.contains('▄') || s.content.contains('█')
-            })
-        });
-        assert!(has_block);
-    }
-
-    #[test]
-    fn all_creatures_render() {
-        for name in ["parrot", "bunny", "llama", "cat"] {
-            let lines = sprite_lines(name, 36, 12);
-            assert!(!lines.is_empty(), "{name} empty");
+    fn every_creature_has_a_variant() {
+        for name in CREATURES {
+            assert!(!creature(name).is_empty(), "{name}");
         }
     }
 
     #[test]
-    fn integer_upscale_keeps_aspect() {
-        let (w, h) = fit_size(10, 8, 40, 24);
-        assert_eq!((w, h), (30, 24));
+    fn maps_are_rectangular() {
+        for map in [
+            PARROT_LARGE,
+            PARROT_SMALL,
+            PARROT_TINY,
+            CAT,
+            CAT_TINY,
+            BUNNY,
+            BUNNY_TINY,
+            LLAMA,
+            LLAMA_TINY,
+        ] {
+            let w = map[0].chars().count();
+            assert!(map.iter().all(|r| r.chars().count() == w));
+        }
     }
 
     #[test]
-    fn shrinks_when_needed() {
-        let (w, h) = fit_size(40, 30, 20, 14);
-        assert!(w <= 20);
-        assert!(h <= 14);
+    fn picks_large_parrot_when_roomy_and_small_when_tight() {
+        let roomy = fit(&creature("parrot"), 40, 14).expect("fits");
+        assert_eq!(roomy.cols, 32);
+        let tight = fit(&creature("parrot"), 40, 8).expect("fits");
+        assert_eq!(tight.cols, 20);
+        let tiny = fit(&creature("parrot"), 40, 4).expect("fits");
+        assert_eq!(tiny.cols, 16);
+        assert!(fit(&creature("parrot"), 40, 3).is_none());
+    }
+
+    #[test]
+    fn upscales_by_whole_pixels() {
+        let big = fit(&creature("cat"), 60, 30).expect("fits");
+        assert_eq!(big.cols, 48);
+        assert_eq!(big.lines.len(), 21);
+    }
+
+    #[test]
+    fn anchor_is_head_top_left() {
+        let placed = fit(&creature("parrot"), 40, 14).expect("fits");
+        assert_eq!(placed.anchor_col, 7);
     }
 }

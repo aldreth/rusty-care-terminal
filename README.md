@@ -91,7 +91,7 @@ Git panels include a commit if you are the **author**, the **committer**, or lis
 | `u` / `U` | Work minutes +1 / −1 |
 | `b` / `B` | Break minutes +1 / −1 |
 
-Theme is only via `RCT_THEME` / `--theme` (no key toggle). Say-box pictures are configurable with `RCT_SAY_BOX` (built-in names or a path to a PNG/JPEG or text art file).
+Theme is only via `RCT_THEME` / `--theme` (no key toggle). Say-box pictures are configurable with `RCT_SAY_BOX` (built-in names or a path to a PNG/JPEG or text art file). Built-in creatures are outlined pixel sprites with hand-drawn sizes; the say box picks the largest one that fits (scaling only by whole pixels) and hides the art when the panel is too short. A PNG works best as small pixel art (roughly 16–32 px) with a transparent background.
 
 Desktop notifications stay off (quiet for headless/remote use).
 
