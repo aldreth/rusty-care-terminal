@@ -260,6 +260,13 @@ fn draw_chart(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 }
 
 fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
+    let title = app
+        .weather
+        .as_ref()
+        .map(|w| w.place.as_str())
+        .or(app.config.weather.as_deref())
+        .unwrap_or("☀️");
+
     let lines = if app.loading && app.weather.is_none() {
         vec![Line::from(Span::styled(
             "loading weather…",
@@ -275,7 +282,6 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 w.high_low.clone(),
                 Style::default().fg(theme.fg),
             )),
-            Line::from(Span::styled(w.place.clone(), theme.muted_style())),
             Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
         ]
     } else if app.config.weather.is_some() {
@@ -297,7 +303,7 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     };
 
     let widget = Paragraph::new(lines)
-        .block(border_block("☀️", theme))
+        .block(border_block(title, theme))
         .style(theme.root_style())
         .wrap(Wrap { trim: true });
     frame.render_widget(widget, area);
