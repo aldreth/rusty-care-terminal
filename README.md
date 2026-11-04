@@ -7,7 +7,7 @@ It ships as a single binary and is configured with **environment variables** and
 ## Features
 
 - Today (last 24 hours) and last-week git panels plus a bar chart, showing commits where **you** are the author, committer or a `Co-authored-by` co-author
-- Three care messages from Mastodon (`@user@instance` → `https://{host}/@{user}.rss`), with a public REST fallback, an offline cache and rate-limit backoff
+- Messages from three Mastodon bots (`@user@instance` → `https://{host}/@{user}.rss`, or any RSS/Atom feed URL), with a public REST fallback, an offline cache and rate-limit backoff
 - A say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
 - Weather from [Open-Meteo](https://open-meteo.com/) (city name or `lat,lon`, no API key)
 - A pomodoro timer in the say-box
@@ -49,7 +49,7 @@ It needs an interactive terminal; piping its output exits with an error.
 
 ## Configuration
 
-Settings are `RCT_*` environment variables or CLI flags (a flag wins); there is no config file. **[CONFIGURATION.md](./CONFIGURATION.md)** lists every option and default, how your commits are matched, care accounts to try (including some delightfully strange bots), legacy `TTC_*` support and what the app sends over the network.
+Settings are `RCT_*` environment variables or CLI flags (a flag wins); there is no config file. **[CONFIGURATION.md](./CONFIGURATION.md)** lists every option and default, how your commits are matched, bots to try (including some delightfully strange ones), legacy `TTC_*` support and what the app sends over the network.
 
 ```bash
 export RCT_REPOS="$HOME/Code"
@@ -65,7 +65,7 @@ rusty-care-terminal
 | `h` / `?` | Help |
 | `q` / `Esc` | Quit (closes help or a fullscreen list first) |
 | `Ctrl+C` | Quit straight away |
-| `r` | Refresh git, care messages and weather now |
+| `r` | Refresh git, bot messages and weather now |
 | `t` / `w` | Fullscreen Today / Week commits (easy to select and copy) |
 | `Tab` | Choose which commit list `j`/`k` scrolls (highlighted border) |
 | `j` / `k` or `↓` / `↑` | Scroll the selected commit list |
@@ -80,8 +80,8 @@ rusty-care-terminal
 
 ```
 ┌──────────── last 24h ────────────┬ commits ┬ weather ─┐
-│ git subjects                     │  bar    ├ care #2 ─┤
-│                                  │         ├ care #3 ─┤
+│ git subjects                     │  bar    ├ bot #2 ──┤
+│                                  │         ├ bot #3 ──┤
 ├──────────── last week ───────────┴─────────┴──────────┤
 │ week commits                     │ say-box / pomodoro │
 └───────────────────────────────────────────────────────┘
@@ -89,9 +89,9 @@ rusty-care-terminal
 
 ## Troubleshooting
 
-- **No commits:** check `RCT_REPOS` points at your repos (or a folder above them with a larger `RCT_REPOS_DEPTH`), and that `git config user.email` in those repos (or `RCT_GIT_AUTHOR`) matches the email on your commits.
+- **No commits:** check `RCT_REPOS` points at your repos (or a folder above them with a larger `RCT_REPOS_DEPTH`), and that `git config user.email` in those repos (or `RCT_GIT_AUTHOR_EMAILS`) matches the email on your commits.
 - **"weather unavailable":** try a bigger nearby city, or `lat,lon` such as `51.51,-0.13`.
-- **Care messages don't change:** the feed may be rate limited or offline; the footer says which. Cached messages are shown until it recovers.
+- **Bot messages don't change:** the feed may be rate limited or offline; the footer says which. Cached messages are shown until it recovers.
 - **Wrong colours:** set `RCT_THEME=dark` or `RCT_THEME=light`.
 
 ## Compared to tiny-care-terminal
@@ -99,7 +99,7 @@ rusty-care-terminal
 | | tiny-care-terminal | rusty-care-terminal |
 | --- | --- | --- |
 | Language / UI | Node + blessed | Rust + ratatui |
-| Care source | Twitter bots | Mastodon RSS (+ REST fallback) |
+| Bots | Twitter | Mastodon RSS (+ REST fallback) |
 | Config | `TTC_*` env | `RCT_*` env + CLI flags (no file), `TTC_*` still read |
 | Weather | MSN / weather-js | Open-Meteo |
 | Say-box art | cowsay / ANSI files | Four built-in pixel animals |

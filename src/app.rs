@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::config::{Config, MAX_BREAK_MINS, MAX_POMODORO_MINS};
 use crate::input::{Input, InputSource};
-use crate::model::{Animal, CareMessage, CareSource, CommitStats, WeatherSnapshot};
+use crate::model::{Animal, BotMessage, BotSource, CommitStats, WeatherSnapshot};
 use crate::services::{self, Snapshot, mock};
 use crate::theme::{OsThemeWatch, ResolvedTheme, Theme, ThemeMode};
 
@@ -103,7 +103,7 @@ pub struct App {
     pub config: Config,
     pub theme: Theme,
     pub commits: CommitStats,
-    pub care: Vec<CareMessage>,
+    pub messages: Vec<BotMessage>,
     pub weather: Option<WeatherSnapshot>,
     /// A refresh is in flight (first load included).
     pub loading: bool,
@@ -133,7 +133,7 @@ impl App {
             animal: config.say_box,
             config,
             commits: CommitStats::default(),
-            care: Vec::new(),
+            messages: Vec::new(),
             weather: None,
             loading: false,
             warning: None,
@@ -154,16 +154,16 @@ impl App {
     }
 
     pub fn say_box_message(&self) -> &str {
-        self.care
+        self.messages
             .first()
             .map(|m| m.text.as_str())
             .unwrap_or(mock::DEFAULT_MESSAGE)
     }
 
-    /// Label for care slot `index`, known from config before the first fetch lands
+    /// Label for bot slot `index`, known from config before the first fetch lands
     /// so the panels don't shift when messages arrive.
-    pub fn care_label(&self, index: usize) -> Option<String> {
-        self.config.care_sources().get(index).map(CareSource::label)
+    pub fn bot_label(&self, index: usize) -> Option<String> {
+        self.config.bots.get(index).map(BotSource::label)
     }
 
     pub fn current_animal(&self) -> Animal {
@@ -171,7 +171,7 @@ impl App {
             .unwrap_or_else(|| Animal::for_message(self.say_box_message()))
     }
 
-    /// Kicks off git / care / weather on a worker thread; ignored if one is running.
+    /// Kicks off git / bots / weather on a worker thread; ignored if one is running.
     pub fn start_refresh(&mut self) {
         if self.pending.is_some() {
             return;
@@ -214,8 +214,8 @@ impl App {
 
     fn apply(&mut self, snapshot: Snapshot) {
         self.commits = snapshot.commits;
-        if !snapshot.care.is_empty() {
-            self.care = snapshot.care;
+        if !snapshot.messages.is_empty() {
+            self.messages = snapshot.messages;
         }
         match snapshot.weather {
             Some(Ok(weather)) => self.weather = Some(weather),
@@ -381,23 +381,18 @@ mod tests {
         let mut app = offline_app();
         assert!(app.loading);
         wait_for_refresh(&mut app);
-        assert_eq!(app.care.len(), crate::model::CARE_SLOTS);
+        assert_eq!(app.messages.len(), crate::model::BOT_SLOTS);
         assert_eq!(app.warning, None);
     }
 
     #[test]
-    fn care_labels_are_known_before_the_first_refresh() {
+    fn bot_labels_are_known_before_the_first_refresh() {
         let app = offline_app();
-        assert!(app.care.is_empty());
-        let labels: Vec<_> = (0..crate::model::CARE_SLOTS)
-            .map(|i| app.care_label(i))
+        assert!(app.messages.is_empty());
+        let labels: Vec<_> = (0..crate::model::BOT_SLOTS)
+            .map(|i| app.bot_label(i))
             .collect();
-        let expected: Vec<_> = app
-            .config
-            .care_sources()
-            .iter()
-            .map(|s| Some(s.label()))
-            .collect();
+        let expected: Vec<_> = app.config.bots.iter().map(|s| Some(s.label())).collect();
         assert_eq!(labels, expected);
     }
 

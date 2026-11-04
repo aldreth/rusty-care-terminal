@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 
-/// Number of care slots on screen: the say-box plus two side panels.
-pub const CARE_SLOTS: usize = 3;
+/// Number of bot slots on screen: the say-box plus two side panels.
+pub const BOT_SLOTS: usize = 3;
 
 /// Say-box creature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,31 +37,31 @@ impl Animal {
     }
 }
 
-/// How a care source is addressed (`@user@instance` or an explicit feed URL).
+/// How a bot is addressed (`@user@instance` or an explicit feed URL).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CareSource {
+pub enum BotSource {
     /// `@user@instance` or `user@instance` → resolve to `https://{host}/@{user}.rss`
     Acct(String),
     /// Explicit RSS/Atom URL
     FeedUrl(String),
 }
 
-impl CareSource {
+impl BotSource {
     pub fn parse(raw: &str) -> Self {
         let trimmed = raw.trim();
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            CareSource::FeedUrl(trimmed.to_string())
+            BotSource::FeedUrl(trimmed.to_string())
         } else {
             let acct = trimmed.trim_start_matches('@').to_string();
-            CareSource::Acct(acct)
+            BotSource::Acct(acct)
         }
     }
 
     /// RSS endpoint for this source; `None` when an account is not a valid `user@host`.
     pub fn rss_url(&self) -> Option<String> {
         match self {
-            CareSource::FeedUrl(url) => Some(url.clone()),
-            CareSource::Acct(acct) => {
+            BotSource::FeedUrl(url) => Some(url.clone()),
+            BotSource::Acct(acct) => {
                 let (user, host) = split_acct(acct)?;
                 Some(format!("https://{host}/@{user}.rss"))
             }
@@ -70,8 +70,8 @@ impl CareSource {
 
     pub fn label(&self) -> String {
         match self {
-            CareSource::FeedUrl(url) => url.clone(),
-            CareSource::Acct(acct) => format!("@{acct}"),
+            BotSource::FeedUrl(url) => url.clone(),
+            BotSource::Acct(acct) => format!("@{acct}"),
         }
     }
 }
@@ -108,7 +108,7 @@ pub fn profile_url_from_acct(acct_or_label: &str) -> Option<String> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CareMessage {
+pub struct BotMessage {
     /// `@user@host`, or empty when the slot has no configured account.
     pub source_label: String,
     pub text: String,
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn acct_resolves_to_mastodon_rss() {
-        let src = CareSource::parse("@selfcare@hachyderm.io");
+        let src = BotSource::parse("@selfcare@hachyderm.io");
         assert_eq!(
             src.rss_url().as_deref(),
             Some("https://hachyderm.io/@selfcare.rss")
@@ -188,7 +188,7 @@ mod tests {
             "user@\u{1b}]8;;x",
             "@host",
         ] {
-            assert_eq!(CareSource::parse(bad).rss_url(), None, "{bad}");
+            assert_eq!(BotSource::parse(bad).rss_url(), None, "{bad}");
             assert_eq!(profile_url_from_acct(bad), None, "{bad}");
         }
     }
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn feed_url_passthrough() {
-        let src = CareSource::parse("https://example.com/feed.rss");
+        let src = BotSource::parse("https://example.com/feed.rss");
         assert_eq!(
             src.rss_url().as_deref(),
             Some("https://example.com/feed.rss")

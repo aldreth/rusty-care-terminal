@@ -3,9 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::model::{CareMessage, clean_text};
+use crate::model::{BotMessage, clean_text};
 
-/// Last good care tip per account plus the shared rate-limit backoff.
+/// Last good message per bot plus the shared rate-limit backoff.
 /// Every operation is best-effort: a broken cache only costs the offline fallback.
 pub struct Cache {
     root: PathBuf,
@@ -25,27 +25,27 @@ impl Cache {
         Self { root: root.into() }
     }
 
-    fn care_path(&self, key: &str) -> PathBuf {
+    fn message_path(&self, key: &str) -> PathBuf {
         let safe: String = key
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
             .collect();
-        self.root.join("care").join(format!("{safe}.txt"))
+        self.root.join("bots").join(format!("{safe}.txt"))
     }
 
     fn backoff_path(&self) -> PathBuf {
         self.root.join("backoff_until.txt")
     }
 
-    pub fn save_care(&self, key: &str, msg: &CareMessage) {
+    pub fn save_message(&self, key: &str, msg: &BotMessage) {
         write_atomic(
-            &self.care_path(key),
+            &self.message_path(key),
             &format!("{}\n{}", msg.source_label, msg.text),
         );
     }
 
-    pub fn load_care(&self, key: &str) -> Option<CareMessage> {
-        let text = fs::read_to_string(self.care_path(key)).ok()?;
+    pub fn load_message(&self, key: &str) -> Option<BotMessage> {
+        let text = fs::read_to_string(self.message_path(key)).ok()?;
         let (label, body) = text.split_once('\n')?;
         let body = clean_text(body);
         if body.is_empty() {
@@ -53,7 +53,7 @@ impl Cache {
         }
         // Labels never contain spaces; older builds appended " → url" / " · cached".
         let label = clean_text(label);
-        Some(CareMessage {
+        Some(BotMessage {
             source_label: label.split(' ').next().unwrap_or_default().to_string(),
             text: body,
         })
@@ -107,24 +107,24 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn roundtrip_care_cache() {
+    fn roundtrip_message_cache() {
         let cache = temp_cache("roundtrip");
-        let msg = CareMessage {
+        let msg = BotMessage {
             source_label: "@bot@example.com".into(),
             text: "Drink water".into(),
         };
-        cache.save_care("@bot@example.com", &msg);
-        assert_eq!(cache.load_care("@bot@example.com"), Some(msg));
+        cache.save_message("@bot@example.com", &msg);
+        assert_eq!(cache.load_message("@bot@example.com"), Some(msg));
         let _ = fs::remove_dir_all(&cache.root);
     }
 
     #[test]
     fn load_cleans_control_chars() {
         let cache = temp_cache("clean");
-        let path = cache.care_path("k");
+        let path = cache.message_path("k");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "@a@b.c\nhi\u{1b}]52;c;bad\u{7} there").unwrap();
-        let loaded = cache.load_care("k").unwrap();
+        let loaded = cache.load_message("k").unwrap();
         assert!(!loaded.text.contains('\u{1b}'));
         let _ = fs::remove_dir_all(&cache.root);
     }
@@ -141,8 +141,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn care_path_is_under_cache() {
-        let p = Cache::at("/x").care_path("a@b.c");
-        assert!(p.ends_with(Path::new("care").join("a_b_c.txt")));
+    fn message_path_is_under_cache() {
+        let p = Cache::at("/x").message_path("a@b.c");
+        assert!(p.ends_with(Path::new("bots").join("a_b_c.txt")));
     }
 }

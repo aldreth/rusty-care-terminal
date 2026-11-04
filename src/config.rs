@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::error::{CareError, Result};
-use crate::model::{Animal, CareSource};
+use crate::error::{AppError, Result};
+use crate::model::{Animal, BotSource};
 use crate::theme::ThemeMode;
 
 const DEFAULT_BOTS: &[&str] = &[
@@ -16,15 +16,14 @@ pub const MAX_BREAK_MINS: u64 = 60;
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub bots: Vec<CareSource>,
-    pub bot_feeds: Vec<String>,
+    /// Mastodon accounts or feed URLs; the first feeds the say-box.
+    pub bots: Vec<BotSource>,
     /// Starting say-box animal; `None` = RANDOM (picked per message).
     pub say_box: Option<Animal>,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
-    /// Identity strings for sole/joint authorship filter (comma-separated).
-    /// Default: each repo's `user.email` / `user.name`.
-    pub git_author: Option<String>,
+    /// Your commit emails, lowercased; empty means each repo's `user.email`.
+    pub git_author_emails: Vec<String>,
     pub weather: Option<String>,
     pub celsius: bool,
     pub update_interval_mins: u64,
@@ -40,12 +39,11 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            bots: DEFAULT_BOTS.iter().map(|b| CareSource::parse(b)).collect(),
-            bot_feeds: Vec::new(),
+            bots: DEFAULT_BOTS.iter().map(|b| BotSource::parse(b)).collect(),
             say_box: Some(Animal::Parrot),
             repos: Vec::new(),
             repos_depth: 1,
-            git_author: None,
+            git_author_emails: Vec::new(),
             weather: None,
             celsius: true,
             update_interval_mins: 20,
@@ -64,9 +62,8 @@ pub struct CliOverrides {
     pub repos: Option<String>,
     pub repos_depth: Option<usize>,
     pub bots: Option<String>,
-    pub bot_feeds: Option<String>,
     pub say_box: Option<String>,
-    pub git_author: Option<String>,
+    pub git_author_emails: Option<String>,
     pub update_interval: Option<u64>,
     pub weather: Option<String>,
     pub celsius: Option<bool>,
@@ -85,10 +82,6 @@ impl Config {
         cfg.apply_cli(cli)?;
         cfg.normalize();
         Ok(cfg)
-    }
-
-    pub fn care_sources(&self) -> &[CareSource] {
-        &self.bots
     }
 
     /// Original tiny-care-terminal variables. Values that only made sense there
@@ -141,14 +134,11 @@ impl Config {
         if let Some(bots) = cli.bots {
             self.bots = parse_bots(&bots)?;
         }
-        if let Some(feeds) = cli.bot_feeds {
-            self.bot_feeds = split_csv(&feeds);
-        }
         if let Some(say_box) = cli.say_box {
             self.say_box = parse_say_box(&say_box)?;
         }
-        if let Some(author) = cli.git_author {
-            self.git_author = non_empty(author);
+        if let Some(emails) = cli.git_author_emails {
+            self.git_author_emails = parse_emails(&emails)?;
         }
         if let Some(mins) = cli.update_interval {
             self.update_interval_mins = mins;
@@ -171,7 +161,7 @@ impl Config {
         self.mock |= cli.mock;
         if let Some(theme) = cli.theme {
             self.theme = ThemeMode::parse(&theme).ok_or_else(|| {
-                CareError::Config(format!("invalid theme: {theme} (auto|dark|light)"))
+                AppError::Config(format!("invalid theme: {theme} (auto|dark|light)"))
             })?;
         }
         Ok(())
@@ -182,19 +172,6 @@ impl Config {
         self.update_interval_mins = self.update_interval_mins.clamp(1, 24 * 60);
         self.pomodoro = self.pomodoro.clamp(1, MAX_POMODORO_MINS);
         self.break_minutes = self.break_minutes.clamp(1, MAX_BREAK_MINS);
-
-        // Explicit feed URLs take the first slots; accounts fill any that remain.
-        if !self.bot_feeds.is_empty() {
-            let mut sources: Vec<CareSource> = self
-                .bot_feeds
-                .iter()
-                .map(|u| CareSource::FeedUrl(u.clone()))
-                .collect();
-            if sources.len() < self.bots.len() {
-                sources.extend(self.bots.iter().skip(sources.len()).cloned());
-            }
-            self.bots = sources;
-        }
     }
 }
 
@@ -227,16 +204,28 @@ fn expand_tilde(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn parse_bots(raw: &str) -> Result<Vec<CareSource>> {
+fn parse_bots(raw: &str) -> Result<Vec<BotSource>> {
     split_csv(raw)
         .iter()
         .map(|b| {
-            let source = CareSource::parse(b);
+            let source = BotSource::parse(b);
             source.rss_url().map(|_| source).ok_or_else(|| {
-                CareError::Config(format!(
-                    "invalid care account: {b} (expected user@instance or an https:// feed URL)"
+                AppError::Config(format!(
+                    "invalid bot: {b} (expected user@instance or an https:// feed URL)"
                 ))
             })
+        })
+        .collect()
+}
+
+fn parse_emails(raw: &str) -> Result<Vec<String>> {
+    split_csv(raw)
+        .into_iter()
+        .map(|email| {
+            let valid = email.contains('@') && !email.contains(['<', '>', ' ']);
+            valid
+                .then(|| email.to_lowercase())
+                .ok_or_else(|| AppError::Config(format!("invalid git author email: {email}")))
         })
         .collect()
 }
@@ -246,7 +235,7 @@ fn parse_say_box(v: &str) -> Result<Option<Animal>> {
         return Ok(None);
     }
     Animal::parse(v).map(Some).ok_or_else(|| {
-        CareError::Config(format!(
+        AppError::Config(format!(
             "invalid say box: {v} (parrot|cat|bunny|llama|random)"
         ))
     })
@@ -261,14 +250,14 @@ fn parse_title(v: &str) -> Option<String> {
 fn parse_num<T: std::str::FromStr>(key: &str, v: &str) -> Result<T> {
     v.trim()
         .parse()
-        .map_err(|_| CareError::Config(format!("{key}: expected a whole number, got {v:?}")))
+        .map_err(|_| AppError::Config(format!("{key}: expected a whole number, got {v:?}")))
 }
 
 fn parse_bool(key: &str, v: &str) -> Result<bool> {
     match v.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
-        _ => Err(CareError::Config(format!(
+        _ => Err(AppError::Config(format!(
             "{key}: expected true/false, got {v:?}"
         ))),
     }
@@ -354,6 +343,10 @@ mod tests {
                 theme: Some("solarized".into()),
                 ..Default::default()
             },
+            CliOverrides {
+                git_author_emails: Some("Edward".into()),
+                ..Default::default()
+            },
         ] {
             assert!(load(cli, &[]).is_err());
         }
@@ -378,19 +371,34 @@ mod tests {
     }
 
     #[test]
-    fn feed_urls_take_the_first_slots() {
+    fn git_author_emails_are_trimmed_and_lowercased() {
         let cfg = load(
             CliOverrides {
-                bot_feeds: Some("https://example.com/a.rss".into()),
+                git_author_emails: Some(" Ed@Example.com, ed@work.example ".into()),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(cfg.git_author_emails, ["ed@example.com", "ed@work.example"]);
+    }
+
+    #[test]
+    fn bots_take_accounts_and_feed_urls() {
+        let cfg = load(
+            CliOverrides {
+                bots: Some("@a@example.social, https://example.com/b.rss".into()),
                 ..Default::default()
             },
             &[],
         )
         .unwrap();
         assert_eq!(
-            cfg.bots[0],
-            CareSource::FeedUrl("https://example.com/a.rss".into())
+            cfg.bots,
+            [
+                BotSource::Acct("a@example.social".into()),
+                BotSource::FeedUrl("https://example.com/b.rss".into()),
+            ]
         );
-        assert_eq!(cfg.bots[1], Config::default().bots[1]);
     }
 }

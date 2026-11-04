@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::error::{CareError, Result};
+use crate::error::{AppError, Result};
 use crate::model::{WeatherSnapshot, clean_text};
 use crate::services::http::{self, encode_query};
 
@@ -17,8 +17,8 @@ pub fn fetch_weather(location: &str, celsius: bool) -> Result<WeatherSnapshot> {
          &temperature_unit={temp_unit}&wind_speed_unit={wind_unit}\
          &timezone=auto&forecast_days=1"
     );
-    let json = http::get_json(&url)
-        .map_err(|e| CareError::Weather(format!("forecast for {name}: {e}")))?;
+    let json =
+        http::get_json(&url).map_err(|e| AppError::Weather(format!("forecast for {name}: {e}")))?;
     snapshot_from_forecast(&json, name, celsius)
 }
 
@@ -27,7 +27,7 @@ fn snapshot_from_forecast(json: &Value, name: String, celsius: bool) -> Result<W
     let daily = &json["daily"];
     let temp = current["temperature_2m"]
         .as_f64()
-        .ok_or_else(|| CareError::Weather("forecast had no current temperature".into()))?;
+        .ok_or_else(|| AppError::Weather("forecast had no current temperature".into()))?;
     let code = current["weather_code"]
         .as_u64()
         .and_then(|c| u16::try_from(c).ok());
@@ -64,7 +64,7 @@ fn resolve_location(raw: &str) -> Result<(String, f64, f64)> {
         encode_query(trimmed)
     );
     let json = http::get_json(&url)
-        .map_err(|e| CareError::Weather(format!("looking up '{trimmed}': {e}")))?;
+        .map_err(|e| AppError::Weather(format!("looking up '{trimmed}': {e}")))?;
     place_from_geocode(&json, trimmed)
 }
 
@@ -72,7 +72,7 @@ fn place_from_geocode(json: &Value, query: &str) -> Result<(String, f64, f64)> {
     let first = json["results"]
         .as_array()
         .and_then(|a| a.first())
-        .ok_or_else(|| CareError::Weather(format!("no place found for '{query}'")))?;
+        .ok_or_else(|| AppError::Weather(format!("no place found for '{query}'")))?;
 
     let name = clean_text(first["name"].as_str().unwrap_or(query));
     let country = clean_text(first["country"].as_str().unwrap_or(""));
@@ -83,10 +83,10 @@ fn place_from_geocode(json: &Value, query: &str) -> Result<(String, f64, f64)> {
     };
     let lat = first["latitude"]
         .as_f64()
-        .ok_or_else(|| CareError::Weather("place lookup had no latitude".into()))?;
+        .ok_or_else(|| AppError::Weather("place lookup had no latitude".into()))?;
     let lon = first["longitude"]
         .as_f64()
-        .ok_or_else(|| CareError::Weather("place lookup had no longitude".into()))?;
+        .ok_or_else(|| AppError::Weather("place lookup had no longitude".into()))?;
     Ok((label, lat, lon))
 }
 

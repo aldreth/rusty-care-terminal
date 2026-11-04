@@ -27,7 +27,7 @@ use theme::ThemeMode;
     version,
     about = "A gentle Rust care terminal inspired by tiny-care-terminal (Mastodon RSS, no Twitter).",
     after_help = concat!(
-        "Configuration guide and care accounts to try: ",
+        "Configuration guide and bots to try: ",
         env!("CARGO_PKG_REPOSITORY"),
         "/blob/main/CONFIGURATION.md"
     )
@@ -41,21 +41,17 @@ struct Cli {
     #[arg(long, env = "RCT_REPOS_DEPTH")]
     repos_depth: Option<usize>,
 
-    /// Comma-separated care accounts as user@instance (first one feeds the say-box).
+    /// Comma-separated bots as user@instance or feed URLs (the first feeds the say-box).
     #[arg(long, env = "RCT_BOTS")]
     bots: Option<String>,
-
-    /// Comma-separated RSS/Atom URLs; these take the first care slots.
-    #[arg(long, env = "RCT_BOT_FEEDS")]
-    bot_feeds: Option<String>,
 
     /// Starting say-box animal: parrot | cat | bunny | llama | random (`a` cycles in-app).
     #[arg(long, env = "RCT_SAY_BOX")]
     say_box: Option<String>,
 
-    /// Your git identity, comma-separated names/emails (default: each repo's user.email/user.name).
-    #[arg(long, env = "RCT_GIT_AUTHOR")]
-    git_author: Option<String>,
+    /// Your commit emails, comma-separated (default: each repo's user.email).
+    #[arg(long, env = "RCT_GIT_AUTHOR_EMAILS")]
+    git_author_emails: Option<String>,
 
     /// Auto-refresh interval in minutes (default 20).
     #[arg(long, env = "RCT_UPDATE_INTERVAL")]
@@ -81,7 +77,7 @@ struct Cli {
     #[arg(long, env = "RCT_BREAK")]
     break_minutes: Option<u64>,
 
-    /// Offline care messages instead of live Mastodon feeds.
+    /// Offline messages instead of live bot feeds.
     #[arg(long, env = "RCT_MOCK", value_parser = BoolishValueParser::new())]
     mock: bool,
 
@@ -96,9 +92,8 @@ impl From<Cli> for CliOverrides {
             repos: cli.repos,
             repos_depth: cli.repos_depth,
             bots: cli.bots,
-            bot_feeds: cli.bot_feeds,
             say_box: cli.say_box,
-            git_author: cli.git_author,
+            git_author_emails: cli.git_author_emails,
             update_interval: cli.update_interval,
             weather: cli.weather,
             celsius: cli.celsius,

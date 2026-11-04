@@ -3,30 +3,30 @@ use std::thread;
 use feed_rs::parser;
 
 use crate::config::Config;
-use crate::error::{CareError, Result};
-use crate::model::{CARE_SLOTS, CareMessage, CareSource, clean_text, split_acct};
+use crate::error::{AppError, Result};
+use crate::model::{BOT_SLOTS, BotMessage, BotSource, clean_text, split_acct};
 use crate::services::cache::Cache;
 use crate::services::http::{self, HttpError, encode_query};
 use crate::services::mock;
 
 const DEFAULT_BACKOFF_SECS: u64 = 300;
 
-/// Latest care tip per slot via Mastodon RSS (public REST fallback, disk cache,
+/// Latest message per bot slot via Mastodon RSS (public REST fallback, disk cache,
 /// rate-limit backoff). Slots are fetched in parallel. Returns `(messages, warnings)`.
-pub fn fetch_care_messages(cfg: &Config) -> (Vec<CareMessage>, Vec<String>) {
+pub fn fetch_messages(cfg: &Config) -> (Vec<BotMessage>, Vec<String>) {
     if cfg.mock {
-        return (mock::mock_care_messages(cfg), Vec::new());
+        return (mock::mock_messages(cfg), Vec::new());
     }
 
     let cache = Cache::default_location();
     let backing_off = cache.as_ref().is_some_and(Cache::backoff_active);
-    let sources = cfg.care_sources();
+    let sources = &cfg.bots;
 
-    let results: Vec<(CareMessage, Option<String>)> = thread::scope(|s| {
-        let handles: Vec<_> = (0..CARE_SLOTS)
+    let results: Vec<(BotMessage, Option<String>)> = thread::scope(|s| {
+        let handles: Vec<_> = (0..BOT_SLOTS)
             .map(|i| {
                 let cache = cache.as_ref();
-                s.spawn(move || care_for_slot(cfg, i, sources.get(i), cache, backing_off))
+                s.spawn(move || message_for_slot(cfg, i, sources.get(i), cache, backing_off))
             })
             .collect();
         handles
@@ -36,14 +36,14 @@ pub fn fetch_care_messages(cfg: &Config) -> (Vec<CareMessage>, Vec<String>) {
                 h.join().unwrap_or_else(|_| {
                     (
                         mock::fallback_message(cfg, i),
-                        Some("care feed worker crashed".into()),
+                        Some("bot feed worker crashed".into()),
                     )
                 })
             })
             .collect()
     });
 
-    let mut messages = Vec::with_capacity(CARE_SLOTS);
+    let mut messages = Vec::with_capacity(BOT_SLOTS);
     let mut warnings = Vec::new();
     for (msg, warning) in results {
         messages.push(msg);
@@ -52,20 +52,20 @@ pub fn fetch_care_messages(cfg: &Config) -> (Vec<CareMessage>, Vec<String>) {
     (messages, warnings)
 }
 
-fn care_for_slot(
+fn message_for_slot(
     cfg: &Config,
     index: usize,
-    source: Option<&CareSource>,
+    source: Option<&BotSource>,
     cache: Option<&Cache>,
     backing_off: bool,
-) -> (CareMessage, Option<String>) {
+) -> (BotMessage, Option<String>) {
     let Some(source) = source else {
         return (mock::fallback_message(cfg, index), None);
     };
     let label = source.label();
     let cached_or_fallback = || {
         cache
-            .and_then(|c| c.load_care(&label))
+            .and_then(|c| c.load_message(&label))
             .unwrap_or_else(|| mock::fallback_message(cfg, index))
     };
 
@@ -76,48 +76,48 @@ fn care_for_slot(
     match fetch_one(source) {
         Ok(msg) => {
             if let Some(cache) = cache {
-                cache.save_care(&label, &msg);
+                cache.save_message(&label, &msg);
             }
             (msg, None)
         }
         Err(e) => {
-            let warning = if let CareError::Http(HttpError::RateLimited { retry_after_secs }) = &e {
+            let warning = if let AppError::Http(HttpError::RateLimited { retry_after_secs }) = &e {
                 let secs = retry_after_secs
                     .unwrap_or(DEFAULT_BACKOFF_SECS)
                     .clamp(60, 3600);
                 if let Some(cache) = cache {
                     cache.set_backoff_secs(secs);
                 }
-                format!("care feed {label}: rate limited — pausing {}m", secs / 60)
+                format!("bot {label}: rate limited — pausing {}m", secs / 60)
             } else {
-                format!("care feed {label}: {e}")
+                format!("bot {label}: {e}")
             };
             (cached_or_fallback(), Some(warning))
         }
     }
 }
 
-fn fetch_one(source: &CareSource) -> Result<CareMessage> {
+fn fetch_one(source: &BotSource) -> Result<BotMessage> {
     let url = source.rss_url().ok_or_else(|| {
-        CareError::Feed(format!(
+        AppError::Feed(format!(
             "{} is not a valid @user@host account",
             source.label()
         ))
     })?;
 
     let text = match http::get_bytes(&url)
-        .map_err(CareError::from)
+        .map_err(AppError::from)
         .and_then(|bytes| latest_entry_text(&bytes))
     {
         Ok(text) => text,
         Err(rss_err) if rss_err.is_rate_limited() => return Err(rss_err),
         Err(rss_err) => match source {
             // Empty or broken RSS: try the public REST API for account sources.
-            CareSource::Acct(acct) => fetch_rest(acct).map_err(|_| rss_err)?,
-            CareSource::FeedUrl(_) => return Err(rss_err),
+            BotSource::Acct(acct) => fetch_rest(acct).map_err(|_| rss_err)?,
+            BotSource::FeedUrl(_) => return Err(rss_err),
         },
     };
-    Ok(CareMessage {
+    Ok(BotMessage {
         source_label: source.label(),
         text,
     })
@@ -125,7 +125,7 @@ fn fetch_one(source: &CareSource) -> Result<CareMessage> {
 
 fn fetch_rest(acct: &str) -> Result<String> {
     let (user, host) = split_acct(acct)
-        .ok_or_else(|| CareError::Feed(format!("invalid acct for REST fallback: {acct}")))?;
+        .ok_or_else(|| AppError::Feed(format!("invalid acct for REST fallback: {acct}")))?;
     let account = http::get_json(&format!(
         "https://{host}/api/v1/accounts/lookup?acct={}",
         encode_query(user)
@@ -133,7 +133,7 @@ fn fetch_rest(acct: &str) -> Result<String> {
     let id = account["id"]
         .as_str()
         .filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric()))
-        .ok_or_else(|| CareError::Feed(format!("lookup {acct}: missing id")))?;
+        .ok_or_else(|| AppError::Feed(format!("lookup {acct}: missing id")))?;
     let statuses = http::get_json(&format!(
         "https://{host}/api/v1/accounts/{id}/statuses?limit=1&exclude_replies=true&exclude_reblogs=true"
     ))?;
@@ -141,18 +141,18 @@ fn fetch_rest(acct: &str) -> Result<String> {
         .as_array()
         .and_then(|a| a.first())
         .and_then(|s| s["content"].as_str())
-        .ok_or_else(|| CareError::Feed(format!("statuses {acct}: empty")))?;
+        .ok_or_else(|| AppError::Feed(format!("statuses {acct}: empty")))?;
     non_empty(strip_html(content))
 }
 
 pub fn latest_entry_text(feed_bytes: &[u8]) -> Result<String> {
     let feed =
-        parser::parse(feed_bytes).map_err(|e| CareError::Feed(format!("RSS parse error: {e}")))?;
+        parser::parse(feed_bytes).map_err(|e| AppError::Feed(format!("RSS parse error: {e}")))?;
 
     let entry = feed
         .entries
         .first()
-        .ok_or_else(|| CareError::Feed("RSS feed has no entries".into()))?;
+        .ok_or_else(|| AppError::Feed("RSS feed has no entries".into()))?;
 
     let raw = entry
         .summary
@@ -166,7 +166,7 @@ pub fn latest_entry_text(feed_bytes: &[u8]) -> Result<String> {
 
 fn non_empty(text: String) -> Result<String> {
     if text.is_empty() {
-        Err(CareError::Feed("latest post had no text".into()))
+        Err(AppError::Feed("latest post had no text".into()))
     } else {
         Ok(text)
     }
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn parses_fixture_rss() {
-        let bytes = include_bytes!("../../fixtures/care/selfcare.rss");
+        let bytes = include_bytes!("../../fixtures/bots/selfcare.rss");
         let text = latest_entry_text(bytes).unwrap();
         assert!(text.contains("timer"));
         assert!(text.contains("breaks"));
@@ -259,7 +259,7 @@ mod tests {
     fn missing_slots_fall_back_quietly() {
         let mut cfg = Config::default();
         cfg.bots.truncate(1);
-        let (msg, warning) = care_for_slot(&cfg, 2, None, None, false);
+        let (msg, warning) = message_for_slot(&cfg, 2, None, None, false);
         assert!(warning.is_none());
         assert!(msg.source_label.is_empty());
         assert!(!msg.text.is_empty());
@@ -268,8 +268,8 @@ mod tests {
     #[test]
     fn invalid_accounts_warn_without_network() {
         let cfg = Config::default();
-        let source = CareSource::parse("tinycarebot");
-        let (_, warning) = care_for_slot(&cfg, 0, Some(&source), None, false);
+        let source = BotSource::parse("tinycarebot");
+        let (_, warning) = message_for_slot(&cfg, 0, Some(&source), None, false);
         assert!(warning.unwrap().contains("not a valid"));
     }
 }
@@ -281,7 +281,7 @@ mod live {
     #[test]
     #[ignore = "network"]
     fn fetches_selfcare_rss() {
-        let msg = fetch_one(&CareSource::parse("selfcare@hachyderm.io")).expect("fetch");
+        let msg = fetch_one(&BotSource::parse("selfcare@hachyderm.io")).expect("fetch");
         assert!(!msg.text.is_empty());
         eprintln!("live: {}", msg.text);
     }

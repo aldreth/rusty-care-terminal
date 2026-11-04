@@ -3,14 +3,14 @@ use thiserror::Error;
 use crate::services::http::HttpError;
 
 #[derive(Debug, Error)]
-pub enum CareError {
+pub enum AppError {
     #[error("config error: {0}")]
     Config(String),
 
     #[error("git error in {path}: {message}")]
     Git { path: String, message: String },
 
-    #[error("care feed error: {0}")]
+    #[error("bot feed error: {0}")]
     Feed(String),
 
     #[error("weather: {0}")]
@@ -20,10 +20,10 @@ pub enum CareError {
     Http(#[from] HttpError),
 }
 
-impl CareError {
+impl AppError {
     pub fn is_rate_limited(&self) -> bool {
-        matches!(self, CareError::Http(HttpError::RateLimited { .. }))
+        matches!(self, AppError::Http(HttpError::RateLimited { .. }))
     }
 }
 
-pub type Result<T> = std::result::Result<T, CareError>;
+pub type Result<T> = std::result::Result<T, AppError>;

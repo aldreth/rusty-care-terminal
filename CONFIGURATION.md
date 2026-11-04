@@ -8,9 +8,8 @@ rusty-care-terminal has no config file. Every option is a CLI flag and an `RCT_*
 | --- | --- | --- | --- |
 | `RCT_REPOS` | `--repos` | none | Comma-separated folders to scan for git repos (`~/` works) |
 | `RCT_REPOS_DEPTH` | `--repos-depth` | `1` | How deep to look for repos under each folder (1–5) |
-| `RCT_GIT_AUTHOR` | `--git-author` | each repo's `user.email` / `user.name` | Your identity: comma-separated emails and/or names |
-| `RCT_BOTS` | `--bots` | [see below](#care-accounts) | Comma-separated `user@instance` care accounts; the first feeds the say-box |
-| `RCT_BOT_FEEDS` | `--bot-feeds` | none | Comma-separated RSS/Atom URLs; these take the first care slots |
+| `RCT_GIT_AUTHOR_EMAILS` | `--git-author-emails` | each repo's `user.email` | Your commit emails, comma-separated |
+| `RCT_BOTS` | `--bots` | [see below](#bots) | Comma-separated `user@instance` accounts or RSS/Atom feed URLs; the first feeds the say-box |
 | `RCT_SAY_BOX` | `--say-box` | `parrot` | Starting animal: `parrot`, `cat`, `bunny`, `llama` or `random` |
 | `RCT_WEATHER` | `--weather` | none | City name or `lat,lon` |
 | `RCT_CELSIUS` | `--celsius` | `true` | `false` for °F and mph (`--celsius false`) |
@@ -19,7 +18,7 @@ rusty-care-terminal has no config file. Every option is a CLI flag and an `RCT_*
 | `RCT_BREAK` | `--break-minutes` | `5` | Break minutes (1–60) |
 | `RCT_THEME` | `--theme` | `auto` | `auto` (follows your terminal's or OS's light/dark switches), `dark` or `light` |
 | `RCT_TERMINAL_TITLE` | `--terminal-title` | `Rusty care terminal` | Window title; empty or `false` leaves the title alone |
-| `RCT_MOCK` | `--mock` | `false` | Offline care messages instead of live feeds |
+| `RCT_MOCK` | `--mock` | `false` | Offline messages instead of live bot feeds |
 
 Booleans accept `true`/`false`, `yes`/`no`, `on`/`off` and `1`/`0`. Invalid values stop the app at startup with an error saying what's wrong.
 
@@ -33,19 +32,19 @@ rusty-care-terminal
 
 ## Your commits
 
-A commit is shown if one of your identities matches its author, committer or a `Co-authored-by` trailer. Emails (anything containing `@`) match emails and other values match names. Matching is exact and case-insensitive, so `ed@example.com` does not match `fred@example.com`. A repo with no identity (no `RCT_GIT_AUTHOR` and no `user.email`/`user.name`) shows nothing rather than everyone's commits. Commits from all branches count; stashes don't.
+A commit is shown if one of your emails is its author, committer or a `Co-authored-by` trailer. Matching is exact and case-insensitive, so `ed@example.com` does not match `fred@example.com`. List every address you commit with, e.g. `RCT_GIT_AUTHOR_EMAILS='me@home.example,me@work.example'`. Without it, each repo's `git config user.email` is used, and a repo with no `user.email` shows nothing rather than everyone's commits. Commits from all branches count; stashes don't.
 
-## Care accounts
+## Bots
 
-Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Three slots are shown; the first account feeds the say-box and the next two the care panels. Text posts work best, since images aren't shown.
+Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Any other RSS or Atom feed works too: put its `https://` URL in `RCT_BOTS`. Three slots are shown; the first bot feeds the say-box and the next two the side panels. Text posts work best, since images aren't shown.
 
 ### Defaults
 
 | Account | Slot |
 | --- | --- |
 | `selfcare@hachyderm.io` | Say-box — selfcare.tech tips |
-| `selfcaregentle@hachyderm.io` | Care panel — gentler cadence |
-| `GoatsLive@mastodon.social` | Care panel — wholesome goats |
+| `selfcaregentle@hachyderm.io` | Side panel — gentler cadence |
+| `GoatsLive@mastodon.social` | Side panel — wholesome goats |
 
 ### Something stranger
 
@@ -86,7 +85,7 @@ The original tiny-care-terminal variables still work, with lower priority than `
 
 ## Network, cache and offline use
 
-- The app contacts the Mastodon instances in your care accounts (or your feed URLs), `api.open-meteo.com` and `geocoding-api.open-meteo.com` (only when `RCT_WEATHER` is set). Nothing else, and no telemetry.
+- The app contacts the Mastodon instances and feed URLs in `RCT_BOTS`, `api.open-meteo.com` and `geocoding-api.open-meteo.com` (only when `RCT_WEATHER` is set). Nothing else, and no telemetry.
 - Requests time out after 10 seconds and responses over 2 MB are rejected.
 - The last good message per account is cached in `$XDG_CACHE_HOME/rusty-care-terminal/` (default `~/.cache/rusty-care-terminal/`). It's used when a feed fails; without a cache entry, a built-in kind message is shown.
 - On HTTP 429 the app stops calling feeds for the server's `Retry-After` (1–60 minutes, default 5) and shows cached messages.

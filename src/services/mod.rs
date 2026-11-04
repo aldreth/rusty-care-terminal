@@ -8,26 +8,22 @@ pub mod weather;
 use std::thread;
 
 use crate::config::Config;
-use crate::model::{CareMessage, CommitStats, WeatherSnapshot};
+use crate::model::{BotMessage, CommitStats, WeatherSnapshot};
 
 /// Everything one refresh produces.
 pub struct Snapshot {
     pub commits: CommitStats,
-    pub care: Vec<CareMessage>,
+    pub messages: Vec<BotMessage>,
     /// `None` when no location is configured.
     pub weather: Option<Result<WeatherSnapshot, String>>,
     pub warnings: Vec<String>,
 }
 
-/// Git, care feeds and weather in parallel; blocking, so call it off the UI thread.
+/// Git, bot feeds and weather in parallel; blocking, so call it off the UI thread.
 pub fn fetch_all(config: &Config) -> Snapshot {
     thread::scope(|s| {
         let git = s.spawn(|| {
-            git::collect_commits(
-                &config.repos,
-                config.repos_depth,
-                config.git_author.as_deref(),
-            )
+            git::collect_commits(&config.repos, config.repos_depth, &config.git_author_emails)
         });
         let weather = s.spawn(|| {
             config
@@ -35,7 +31,7 @@ pub fn fetch_all(config: &Config) -> Snapshot {
                 .as_deref()
                 .map(|loc| weather::fetch_weather(loc, config.celsius).map_err(|e| e.to_string()))
         });
-        let (care, care_warnings) = mastodon::fetch_care_messages(config);
+        let (messages, bot_warnings) = mastodon::fetch_messages(config);
 
         let mut warnings = Vec::new();
         let commits = match git.join() {
@@ -48,7 +44,7 @@ pub fn fetch_all(config: &Config) -> Snapshot {
                 CommitStats::default()
             }
         };
-        warnings.extend(care_warnings);
+        warnings.extend(bot_warnings);
         let weather = weather
             .join()
             .unwrap_or_else(|_| Some(Err("weather lookup crashed".into())));
@@ -58,7 +54,7 @@ pub fn fetch_all(config: &Config) -> Snapshot {
 
         Snapshot {
             commits,
-            care,
+            messages,
             weather,
             warnings,
         }

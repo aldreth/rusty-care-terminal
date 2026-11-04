@@ -11,7 +11,7 @@ First release.
 ### 🚀 Features
 
 - Today / last-week git panels and bar chart for commits you authored, committed or co-authored (`Co-authored-by`), across every repo under `RCT_REPOS`
-- Care messages from Mastodon RSS (`@user@instance`), with a public REST fallback, an offline cache and rate-limit backoff
+- Messages from Mastodon bots over RSS (`@user@instance`, or any feed URL), with a public REST fallback, an offline cache and rate-limit backoff
 - Say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
 - Weather from Open-Meteo (city name or `lat,lon`), no API key needed
 - Pomodoro timer in the say-box (`p`, `s`, `e`, `u`/`U`, `b`/`B`)

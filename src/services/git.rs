@@ -4,19 +4,19 @@ use std::process::Command;
 use chrono::{DateTime, Duration, Local};
 use walkdir::WalkDir;
 
-use crate::error::{CareError, Result};
+use crate::error::{AppError, Result};
 use crate::model::{CommitEntry, CommitStats, clean_text};
 
 const FIELD: char = '\u{1f}';
 const COAUTHOR_SEP: char = '\u{1e}';
 
 /// Discover git repos under configured roots and collect commits where **you**
-/// are sole or joint author: git author, committer, or a `Co-authored-by` trailer
-/// matches your identity (`RCT_GIT_AUTHOR`, else each repo's `user.email` / `user.name`).
+/// are sole or joint author: the author, committer or a `Co-authored-by` email
+/// is one of yours (`RCT_GIT_AUTHOR_EMAILS`, else each repo's `user.email`).
 pub fn collect_commits(
     roots: &[PathBuf],
     depth: usize,
-    author_override: Option<&str>,
+    your_emails: &[String],
 ) -> (CommitStats, Vec<String>) {
     let mut stats = CommitStats::default();
     let mut warnings: Vec<String> = roots
@@ -27,17 +27,23 @@ pub fn collect_commits(
 
     let day_ago = Local::now() - Duration::hours(24);
     for repo in discover_repos(roots, depth) {
-        let identities = identities_for_repo(&repo, author_override);
-        if identities.is_empty() {
-            // Safer to show nothing than everyone else's history.
-            warnings.push(format!(
-                "{}: no git user.email/user.name — set RCT_GIT_AUTHOR to see your commits",
-                repo.display()
-            ));
-            continue;
-        }
+        let emails = if your_emails.is_empty() {
+            match git_config(&repo, "user.email") {
+                Some(email) => vec![email.to_lowercase()],
+                None => {
+                    // Safer to show nothing than everyone else's history.
+                    warnings.push(format!(
+                        "{}: no git user.email — set RCT_GIT_AUTHOR_EMAILS to see your commits",
+                        repo.display()
+                    ));
+                    continue;
+                }
+            }
+        } else {
+            your_emails.to_vec()
+        };
 
-        match log_week(&repo, &identities) {
+        match log_week(&repo, &emails) {
             Ok(commits) => {
                 for (entry, committed) in commits {
                     if committed >= day_ago {
@@ -81,21 +87,6 @@ fn git(repo: &Path) -> Command {
     cmd
 }
 
-fn identities_for_repo(repo: &Path, override_author: Option<&str>) -> Vec<String> {
-    if let Some(raw) = override_author {
-        return raw
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
-    }
-    ["user.email", "user.name"]
-        .iter()
-        .filter_map(|key| git_config(repo, key))
-        .collect()
-}
-
 fn git_config(repo: &Path, key: &str) -> Option<String> {
     let output = git(repo).args(["config", "--get", key]).output().ok()?;
     if !output.status.success() {
@@ -106,10 +97,10 @@ fn git_config(repo: &Path, key: &str) -> Option<String> {
 }
 
 /// Your commits from the last 7 days with their committer time (used for "today").
-fn log_week(repo: &Path, identities: &[String]) -> Result<Vec<(CommitEntry, DateTime<Local>)>> {
-    // hash, author date, committer date, author name/email, committer name/email,
-    // subject, Co-authored-by values.
-    let pretty = "%h%x1f%aI%x1f%cI%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%s%x1f\
+fn log_week(repo: &Path, your_emails: &[String]) -> Result<Vec<(CommitEntry, DateTime<Local>)>> {
+    // hash, author date, committer date, author email, committer email, subject,
+    // Co-authored-by values.
+    let pretty = "%h%x1f%aI%x1f%cI%x1f%ae%x1f%ce%x1f%s%x1f\
                   %(trailers:key=Co-authored-by,valueonly,separator=%x1e)";
     let output = git(repo)
         .args([
@@ -122,13 +113,13 @@ fn log_week(repo: &Path, identities: &[String]) -> Result<Vec<(CommitEntry, Date
             &format!("--pretty=format:{pretty}"),
         ])
         .output()
-        .map_err(|e| CareError::Git {
+        .map_err(|e| AppError::Git {
             path: repo.display().to_string(),
             message: format!("failed to run git: {e}"),
         })?;
 
     if !output.status.success() {
-        return Err(CareError::Git {
+        return Err(AppError::Git {
             path: repo.display().to_string(),
             message: clean_text(&String::from_utf8_lossy(&output.stderr)),
         });
@@ -138,38 +129,31 @@ fn log_week(repo: &Path, identities: &[String]) -> Result<Vec<(CommitEntry, Date
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout
         .lines()
-        .filter_map(|line| parse_log_line(line, identities, &repo_label))
+        .filter_map(|line| parse_log_line(line, your_emails, &repo_label))
         .collect())
 }
 
 fn parse_log_line(
     line: &str,
-    identities: &[String],
+    your_emails: &[String],
     repo_label: &str,
 ) -> Option<(CommitEntry, DateTime<Local>)> {
-    let f: Vec<&str> = line.splitn(9, FIELD).collect();
+    let f: Vec<&str> = line.splitn(7, FIELD).collect();
     let [
         hash,
         authored,
         committed,
-        an,
-        ae,
-        cn,
-        ce,
+        author,
+        committer,
         subject,
         coauthors,
     ] = f[..]
     else {
         return None;
     };
-    let mut people = vec![(an, ae), (cn, ce)];
-    people.extend(
-        coauthors
-            .split(COAUTHOR_SEP)
-            .filter(|c| !c.trim().is_empty())
-            .map(parse_person),
-    );
-    if !involves_you(identities, &people) {
+    let mut emails = vec![author, committer];
+    emails.extend(coauthors.split(COAUTHOR_SEP).map(trailer_email));
+    if !involves_you(your_emails, &emails) {
         return None;
     }
     let committed = parse_git_date(committed)?;
@@ -184,28 +168,22 @@ fn parse_log_line(
     ))
 }
 
-/// `Name <email>` → `(name, email)`; a bare value is treated as both.
-fn parse_person(raw: &str) -> (&str, &str) {
-    match raw.split_once('<') {
-        Some((name, rest)) => (name.trim(), rest.trim_end().trim_end_matches('>').trim()),
-        None => (raw.trim(), raw.trim()),
-    }
+/// The email in a `Name <email>` trailer value.
+fn trailer_email(raw: &str) -> &str {
+    raw.split_once('<')
+        .map_or(raw, |(_, rest)| {
+            rest.split_once('>').map_or(rest, |(email, _)| email)
+        })
+        .trim()
 }
 
-/// True if an identity exactly matches (case-insensitively) the name or email of
-/// the author, committer, or a co-author. Values containing `@` match emails;
-/// anything else matches names.
-fn involves_you(identities: &[String], people: &[(&str, &str)]) -> bool {
-    identities.iter().any(|id| {
-        let (id_name, id_email) = parse_person(id);
-        if id_email.contains('@') {
-            people
-                .iter()
-                .any(|(_, email)| email.eq_ignore_ascii_case(id_email))
-        } else {
-            let wanted = id_name.to_lowercase();
-            !wanted.is_empty() && people.iter().any(|(name, _)| name.to_lowercase() == wanted)
-        }
+/// Exact, case-insensitive email match, so `ed@example.com` never matches
+/// `fred@example.com`. `your_emails` are already lowercase.
+fn involves_you(your_emails: &[String], emails: &[&str]) -> bool {
+    emails.iter().any(|email| {
+        your_emails
+            .iter()
+            .any(|yours| email.eq_ignore_ascii_case(yours))
     })
 }
 
@@ -228,53 +206,51 @@ fn parse_git_date(raw: &str) -> Option<DateTime<Local>> {
 mod tests {
     use super::*;
 
-    fn ids(v: &[&str]) -> Vec<String> {
-        v.iter().map(|s| s.to_string()).collect()
+    fn yours() -> Vec<String> {
+        vec!["edward@aldreth.com".to_string()]
     }
 
     #[test]
-    fn sole_author_matches() {
-        let people = [
-            ("Edward", "edward@aldreth.com"),
-            ("Edward", "edward@aldreth.com"),
+    fn author_committer_or_coauthor_email_matches() {
+        assert!(involves_you(
+            &yours(),
+            &["edward@aldreth.com", "x@example.com"]
+        ));
+        assert!(involves_you(
+            &yours(),
+            &["x@example.com", "Edward@Aldreth.com"]
+        ));
+        assert!(involves_you(
+            &yours(),
+            &[
+                "x@example.com",
+                "x@example.com",
+                trailer_email("Edward A-H <edward@aldreth.com>")
+            ]
+        ));
+    }
+
+    #[test]
+    fn partial_and_unrelated_emails_are_excluded() {
+        let emails = [
+            "fred@aldreth.com",
+            "edward@aldreth.com.evil",
+            trailer_email("Edward"),
         ];
-        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
+        assert!(!involves_you(&yours(), &emails));
     }
 
     #[test]
-    fn joint_via_coauthored_by() {
-        let people = [
-            ("Cursor Agent", "cursoragent@cursor.com"),
-            ("Cursor Agent", "cursoragent@cursor.com"),
-            parse_person("Edward Andrews-Hodgson <Edward@Aldreth.com>"),
-        ];
-        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
-    }
-
-    #[test]
-    fn joint_via_committer() {
-        let people = [
-            ("Cursor Agent", "cursoragent@cursor.com"),
-            ("Edward", "edward@aldreth.com"),
-        ];
-        assert!(involves_you(&ids(&["edward@aldreth.com"]), &people));
-    }
-
-    #[test]
-    fn unrelated_and_partial_matches_are_excluded() {
-        let people = [
-            ("Fred", "fred@aldreth.com"),
-            ("Edwardo", "else@example.com"),
-            parse_person("Bot <bot@example.com>"),
-        ];
-        assert!(!involves_you(&ids(&["ed@aldreth.com", "Edward"]), &people));
-    }
-
-    #[test]
-    fn names_match_whole_and_case_insensitively() {
-        let people = [("Zoë Smith", "z@example.com")];
-        assert!(involves_you(&ids(&["zoë smith"]), &people));
-        assert!(involves_you(&ids(&["Zoë <z@example.com>"]), &people));
+    fn reads_trailer_emails() {
+        assert_eq!(
+            trailer_email("Edward <edward@aldreth.com>"),
+            "edward@aldreth.com"
+        );
+        assert_eq!(trailer_email(" edward@aldreth.com "), "edward@aldreth.com");
+        assert_eq!(
+            trailer_email("Edward <edward@aldreth.com> (work)"),
+            "edward@aldreth.com"
+        );
     }
 
     #[test]
@@ -283,20 +259,17 @@ mod tests {
             "abc1234",
             "2026-11-03T10:00:00+00:00",
             "2026-11-03T11:00:00+00:00",
-            "Someone",
             "someone@example.com",
-            "Someone",
             "someone@example.com",
             "Fix\u{1b}[31m thing",
             "Edward <edward@aldreth.com>\u{1e}Other <o@example.com>",
         ]
         .join("\u{1f}");
-        let (entry, committed) =
-            parse_log_line(&line, &ids(&["edward@aldreth.com"]), "~/x").expect("mine");
+        let (entry, committed) = parse_log_line(&line, &yours(), "~/x").expect("mine");
         assert_eq!(entry.hash, "abc1234");
         assert!(!entry.subject.contains('\u{1b}'));
         assert!(committed > entry.when);
-        assert!(parse_log_line(&line, &ids(&["nobody@example.com"]), "~/x").is_none());
-        assert!(parse_log_line("garbage", &ids(&["x"]), "~/x").is_none());
+        assert!(parse_log_line(&line, &["nobody@example.com".into()], "~/x").is_none());
+        assert!(parse_log_line("garbage", &yours(), "~/x").is_none());
     }
 }

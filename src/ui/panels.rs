@@ -60,8 +60,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_today(frame, app, theme, top[0]);
         draw_chart(frame, app, theme, top[1]);
         draw_weather(frame, app, theme, side[0]);
-        draw_care_panel(frame, app, theme, 1, "💖", side[1]);
-        draw_care_panel(frame, app, theme, 2, "💬", side[2]);
+        draw_bot_panel(frame, app, theme, 1, "💖", side[1]);
+        draw_bot_panel(frame, app, theme, 2, "💬", side[2]);
         draw_week(frame, app, theme, bottom[0]);
         draw_say_box(frame, app, theme, bottom[1]);
         draw_status(frame, app, theme, root[1]);
@@ -315,7 +315,7 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     frame.render_widget(widget, area);
 }
 
-fn draw_care_panel(
+fn draw_bot_panel(
     frame: &mut Frame,
     app: &App,
     theme: Theme,
@@ -328,19 +328,15 @@ fn draw_care_panel(
     frame.render_widget(block, area);
 
     let mut body = inner;
-    if let Some(label) = app
-        .care_label(index)
-        .as_deref()
-        .and_then(friendly_care_label)
-    {
+    if let Some(label) = app.bot_label(index).as_deref().and_then(friendly_bot_label) {
         let label_row = take_rows(&mut body, 1);
         render_acct_label(frame.buffer_mut(), label_row, &label, theme);
         take_rows(&mut body, 1);
     }
 
-    let text = match app.care.get(index) {
+    let text = match app.messages.get(index) {
         Some(msg) => Span::styled(msg.text.clone(), Style::default().fg(theme.fg)),
-        None if app.loading => Span::styled("loading care…", theme.muted_style()),
+        None if app.loading => Span::styled("loading…", theme.muted_style()),
         None => Span::styled(mock::DEFAULT_MESSAGE, Style::default().fg(theme.fg)),
     };
     frame.render_widget(
@@ -364,7 +360,7 @@ fn take_rows(area: &mut Rect, rows: u16) -> Rect {
 }
 
 /// `@user@host` labels are shown; feed URLs and empty slots get no label line.
-fn friendly_care_label(raw: &str) -> Option<String> {
+fn friendly_bot_label(raw: &str) -> Option<String> {
     let label = raw.trim();
     let hidden = label.is_empty() || label.starts_with("http://") || label.starts_with("https://");
     (!hidden).then(|| label.to_string())
@@ -419,7 +415,7 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     let mut body = block.inner(area);
     frame.render_widget(block, area);
 
-    if let Some(label) = app.care_label(0).as_deref().and_then(friendly_care_label) {
+    if let Some(label) = app.bot_label(0).as_deref().and_then(friendly_bot_label) {
         let label_row = take_rows(&mut body, 1);
         render_acct_label(frame.buffer_mut(), label_row, &label, theme);
     }
@@ -526,7 +522,7 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         help_line("q / Esc", "quit (closes help / focus first)", theme),
         help_line("Ctrl+C", "quit straight away", theme),
         help_line("h / ?", "toggle this help", theme),
-        help_line("r", "refresh git / care / weather", theme),
+        help_line("r", "refresh git / bots / weather", theme),
         help_line("t", "fullscreen Today commits (copy-friendly)", theme),
         help_line("w", "fullscreen Week commits (copy-friendly)", theme),
         help_line("Tab", "select Today vs Week for scrolling", theme),
@@ -629,11 +625,11 @@ mod tests {
     #[test]
     fn friendly_label_keeps_acct_drops_url() {
         assert_eq!(
-            friendly_care_label("@selfcaregentle@hachyderm.io").as_deref(),
+            friendly_bot_label("@selfcaregentle@hachyderm.io").as_deref(),
             Some("@selfcaregentle@hachyderm.io")
         );
-        assert_eq!(friendly_care_label("https://hachyderm.io/@x.rss"), None);
-        assert_eq!(friendly_care_label(""), None);
+        assert_eq!(friendly_bot_label("https://hachyderm.io/@x.rss"), None);
+        assert_eq!(friendly_bot_label(""), None);
         assert_eq!(
             profile_url_from_acct("@selfcare@hachyderm.io").as_deref(),
             Some("https://hachyderm.io/@selfcare")
