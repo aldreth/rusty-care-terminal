@@ -283,7 +283,7 @@ fn draw_weather(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 w.high_low.clone(),
                 Style::default().fg(theme.fg),
             )),
-            Line::from(Span::styled(w.wind.clone(), theme.muted_style())),
+            Line::from(Span::styled(w.wind.clone(), Style::default().fg(theme.fg))),
         ]
     } else if app.config.weather.is_some() && app.loading {
         vec![Line::from(Span::styled(
