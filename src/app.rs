@@ -153,10 +153,11 @@ impl App {
         app
     }
 
+    /// A feed post's title is a better fit for the speech bubble than its body.
     pub fn say_box_message(&self) -> &str {
         self.messages
             .first()
-            .map(|m| m.text.as_str())
+            .map(|m| m.title.as_deref().unwrap_or(&m.text))
             .unwrap_or(mock::DEFAULT_MESSAGE)
     }
 

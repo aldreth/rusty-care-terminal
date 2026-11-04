@@ -111,6 +111,8 @@ pub fn profile_url_from_acct(acct_or_label: &str) -> Option<String> {
 pub struct BotMessage {
     /// `@user@host`, or empty when the slot has no configured account.
     pub source_label: String,
+    /// Post title, for feeds that have them (blogs, news); Mastodon posts don't.
+    pub title: Option<String>,
     pub text: String,
 }
 

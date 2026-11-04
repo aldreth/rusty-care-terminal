@@ -105,20 +105,21 @@ fn fetch_one(source: &BotSource) -> Result<BotMessage> {
         ))
     })?;
 
-    let text = match http::get_bytes(&url)
+    let (title, text) = match http::get_bytes(&url)
         .map_err(AppError::from)
-        .and_then(|bytes| latest_entry_text(&bytes))
+        .and_then(|bytes| latest_post(&bytes))
     {
-        Ok(text) => text,
+        Ok(post) => post,
         Err(rss_err) if rss_err.is_rate_limited() => return Err(rss_err),
         Err(rss_err) => match source {
             // Empty or broken RSS: try the public REST API for account sources.
-            BotSource::Acct(acct) => fetch_rest(acct).map_err(|_| rss_err)?,
+            BotSource::Acct(acct) => (None, fetch_rest(acct).map_err(|_| rss_err)?),
             BotSource::FeedUrl(_) => return Err(rss_err),
         },
     };
     Ok(BotMessage {
         source_label: source.label(),
+        title,
         text,
     })
 }
@@ -145,7 +146,11 @@ fn fetch_rest(acct: &str) -> Result<String> {
     non_empty(strip_html(content))
 }
 
-pub fn latest_entry_text(feed_bytes: &[u8]) -> Result<String> {
+/// Blog posts can run to thousands of words; a panel shows a few lines.
+const MAX_TEXT_CHARS: usize = 600;
+
+/// Title (when the feed has real ones; Mastodon's don't) and text of the newest post.
+pub fn latest_post(feed_bytes: &[u8]) -> Result<(Option<String>, String)> {
     let feed =
         parser::parse(feed_bytes).map_err(|e| AppError::Feed(format!("RSS parse error: {e}")))?;
 
@@ -154,14 +159,33 @@ pub fn latest_entry_text(feed_bytes: &[u8]) -> Result<String> {
         .first()
         .ok_or_else(|| AppError::Feed("RSS feed has no entries".into()))?;
 
-    let raw = entry
+    let title = entry
+        .title
+        .as_ref()
+        .map(|t| strip_html(&t.content))
+        .filter(|t| !t.is_empty());
+    let body = entry
         .summary
         .as_ref()
         .map(|s| s.content.as_str())
         .or_else(|| entry.content.as_ref().and_then(|c| c.body.as_deref()))
-        .or_else(|| entry.title.as_ref().map(|t| t.content.as_str()))
-        .unwrap_or("");
-    non_empty(strip_html(raw))
+        .map(strip_html)
+        .unwrap_or_default();
+    let body = truncate_chars(&body, MAX_TEXT_CHARS);
+
+    match title {
+        Some(title) if body.is_empty() => Ok((None, title)),
+        // Feeds without real titles often repeat the start of the post instead.
+        Some(title) if body.starts_with(title.trim_end_matches(['…', '.'])) => Ok((None, body)),
+        title => Ok((title, non_empty(body)?)),
+    }
+}
+
+fn truncate_chars(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((cut, _)) => format!("{}…", text[..cut].trim_end()),
+        None => text.to_string(),
+    }
 }
 
 fn non_empty(text: String) -> Result<String> {
@@ -172,18 +196,58 @@ fn non_empty(text: String) -> Result<String> {
     }
 }
 
+/// Tags that separate blocks of text, so `<p>One</p><p>Two</p>` reads "One Two".
+const BLOCK_TAGS: &[&str] = &[
+    "p",
+    "br",
+    "div",
+    "li",
+    "ul",
+    "ol",
+    "blockquote",
+    "pre",
+    "hr",
+    "tr",
+    "td",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "figure",
+    "figcaption",
+];
+
 fn strip_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    let mut in_tag = false;
+    let mut tag: Option<String> = None;
     for ch in input.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(ch),
-            _ => {}
+        match (&mut tag, ch) {
+            (None, '<') => tag = Some(String::new()),
+            (None, ch) => out.push(ch),
+            (Some(name), '>') => {
+                if is_block_tag(name) {
+                    out.push(' ');
+                }
+                tag = None;
+            }
+            (Some(name), ch) if name.len() < 16 => name.push(ch),
+            (Some(_), _) => {}
         }
     }
     clean_text(&decode_entities(&out))
+}
+
+fn is_block_tag(tag: &str) -> bool {
+    let name: String = tag
+        .trim_start_matches('/')
+        .chars()
+        .take_while(char::is_ascii_alphanumeric)
+        .collect();
+    BLOCK_TAGS
+        .iter()
+        .any(|block| name.eq_ignore_ascii_case(block))
 }
 
 fn decode_entities(input: &str) -> String {
@@ -233,11 +297,53 @@ mod tests {
     #[test]
     fn parses_fixture_rss() {
         let bytes = include_bytes!("../../fixtures/bots/selfcare.rss");
-        let text = latest_entry_text(bytes).unwrap();
+        let (title, text) = latest_post(bytes).unwrap();
+        assert_eq!(title, None, "Mastodon posts have no titles");
         assert!(text.contains("timer"));
         assert!(text.contains("breaks"));
         assert!(!text.contains('<'), "expected tags stripped: {text}");
         assert!(!text.contains("&"), "expected entities decoded: {text}");
+    }
+
+    const BLOG: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Family Diary</title>
+  <id>https://example.com/</id>
+  <updated>2026-10-31T16:03:03Z</updated>
+  <entry>
+    <title>Toby&#39;s A levels</title>
+    <id>https://example.com/a-levels</id>
+    <updated>2026-10-31T16:03:03Z</updated>
+    <content type="html">&lt;p&gt;Hooray!!&lt;/p&gt;&lt;p&gt;Toby got his &lt;em&gt;A level&lt;/em&gt; results.&lt;/p&gt;</content>
+  </entry>
+</feed>"#;
+
+    #[test]
+    fn blog_posts_keep_their_title_and_paragraph_breaks() {
+        let (title, text) = latest_post(BLOG.as_bytes()).unwrap();
+        assert_eq!(title.as_deref(), Some("Toby's A levels"));
+        assert_eq!(text, "Hooray!! Toby got his A level results.");
+    }
+
+    #[test]
+    fn long_posts_are_trimmed() {
+        let long = BLOG.replace("Hooray!!", &"word ".repeat(400));
+        let (_, text) = latest_post(long.as_bytes()).unwrap();
+        assert!(text.chars().count() <= MAX_TEXT_CHARS + 1);
+        assert!(text.ends_with('…'));
+    }
+
+    #[test]
+    fn strip_html_separates_blocks_but_not_inline_tags() {
+        assert_eq!(
+            strip_html("<p>Rest.</p><p><a href=\"/tags/pets\">#<span>pets</span></a></p>"),
+            "Rest. #pets"
+        );
+        assert_eq!(strip_html("one<br/>two<BR>three"), "one two three");
+        assert_eq!(
+            strip_html("<span class=\"h-card\">@<span>bob</span></span>"),
+            "@bob"
+        );
     }
 
     #[test]

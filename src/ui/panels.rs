@@ -334,13 +334,24 @@ fn draw_bot_panel(
         take_rows(&mut body, 1);
     }
 
-    let text = match app.messages.get(index) {
-        Some(msg) => Span::styled(msg.text.clone(), Style::default().fg(theme.fg)),
-        None if app.loading => Span::styled("loading…", theme.muted_style()),
-        None => Span::styled(mock::DEFAULT_MESSAGE, Style::default().fg(theme.fg)),
+    let text_style = Style::default().fg(theme.fg);
+    let lines = match app.messages.get(index) {
+        Some(msg) => {
+            let mut lines = Vec::with_capacity(2);
+            if let Some(title) = &msg.title {
+                lines.push(Line::styled(
+                    title.clone(),
+                    text_style.add_modifier(Modifier::BOLD),
+                ));
+            }
+            lines.push(Line::styled(msg.text.clone(), text_style));
+            lines
+        }
+        None if app.loading => vec![Line::styled("loading…", theme.muted_style())],
+        None => vec![Line::styled(mock::DEFAULT_MESSAGE, text_style)],
     };
     frame.render_widget(
-        Paragraph::new(text)
+        Paragraph::new(lines)
             .style(theme.root_style())
             .wrap(Wrap { trim: true }),
         body,

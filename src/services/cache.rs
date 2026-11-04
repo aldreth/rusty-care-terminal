@@ -40,13 +40,25 @@ impl Cache {
     pub fn save_message(&self, key: &str, msg: &BotMessage) {
         write_atomic(
             &self.message_path(key),
-            &format!("{}\n{}", msg.source_label, msg.text),
+            &format!(
+                "{}\n{}\n{}",
+                msg.source_label,
+                msg.title.as_deref().unwrap_or_default(),
+                msg.text
+            ),
         );
     }
 
     pub fn load_message(&self, key: &str) -> Option<BotMessage> {
-        let text = fs::read_to_string(self.message_path(key)).ok()?;
-        let (label, body) = text.split_once('\n')?;
+        let saved = fs::read_to_string(self.message_path(key)).ok()?;
+        // `label\ntitle\ntext`; older builds wrote `label\ntext`.
+        let mut lines = saved.splitn(3, '\n');
+        let label = lines.next()?;
+        let (title, body) = match (lines.next(), lines.next()) {
+            (Some(title), Some(body)) => (clean_text(title), body),
+            (Some(body), None) => (String::new(), body),
+            _ => return None,
+        };
         let body = clean_text(body);
         if body.is_empty() {
             return None;
@@ -55,6 +67,7 @@ impl Cache {
         let label = clean_text(label);
         Some(BotMessage {
             source_label: label.split(' ').next().unwrap_or_default().to_string(),
+            title: (!title.is_empty()).then_some(title),
             text: body,
         })
     }
@@ -111,6 +124,7 @@ pub(crate) mod tests {
         let cache = temp_cache("roundtrip");
         let msg = BotMessage {
             source_label: "@bot@example.com".into(),
+            title: Some("Hydration".into()),
             text: "Drink water".into(),
         };
         cache.save_message("@bot@example.com", &msg);

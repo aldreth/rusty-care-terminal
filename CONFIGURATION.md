@@ -36,7 +36,7 @@ A commit is shown if one of your emails is its author, committer or a `Co-author
 
 ## Bots
 
-Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Any other RSS or Atom feed works too: put its `https://` URL in `RCT_BOTS`. Three slots are shown; the first bot feeds the say-box and the next two the side panels. Text posts work best, since images aren't shown.
+Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Any other RSS or Atom feed works too: put its `https://` URL in `RCT_BOTS`. Posts with titles (a blog, say) show the title in bold above the start of the post, and the say-box shows just the title. Three slots are shown; the first bot feeds the say-box and the next two the side panels. Text posts work best, since images aren't shown.
 
 ### Defaults
 

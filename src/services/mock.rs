@@ -15,6 +15,7 @@ const FALLBACK: &[&str] = &[
 pub fn fallback_message(cfg: &Config, index: usize) -> BotMessage {
     BotMessage {
         source_label: cfg.bots.get(index).map(|s| s.label()).unwrap_or_default(),
+        title: None,
         text: FALLBACK[index % FALLBACK.len()].to_string(),
     }
 }
