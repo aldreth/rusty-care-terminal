@@ -100,6 +100,15 @@ pub fn clean_text(raw: &str) -> String {
         .join(" ")
 }
 
+/// Remote URLs end up inside terminal escape sequences, so only plain absolute
+/// http(s) URLs without whitespace or control characters are kept.
+pub fn safe_link(raw: &str) -> Option<String> {
+    let url = raw.trim();
+    let web = url.starts_with("https://") || url.starts_with("http://");
+    let plain = url.len() <= 2048 && !url.chars().any(|c| c.is_whitespace() || c.is_control());
+    (web && plain).then(|| url.to_string())
+}
+
 /// `@user@host` / `user@host` → `https://{host}/@{user}`.
 pub fn profile_url_from_acct(acct_or_label: &str) -> Option<String> {
     let acct = acct_or_label.trim().trim_start_matches('@');
@@ -113,6 +122,8 @@ pub struct BotMessage {
     pub source_label: String,
     /// Post title, for feeds that have them (blogs, news); Mastodon posts don't.
     pub title: Option<String>,
+    /// Web page for the post; the title links to it.
+    pub link: Option<String>,
     pub text: String,
 }
 
@@ -152,6 +163,19 @@ impl CommitStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn safe_link_rejects_escapes_and_non_web_urls() {
+        assert_eq!(
+            safe_link(" https://example.com/post "),
+            Some("https://example.com/post".into())
+        );
+        assert_eq!(safe_link("https://example.com/\u{1b}]8;;x"), None);
+        assert_eq!(safe_link("https://example.com/a\u{7}b"), None);
+        assert_eq!(safe_link("https://example.com/a b"), None);
+        assert_eq!(safe_link("javascript:alert(1)"), None);
+        assert_eq!(safe_link("/relative/post"), None);
+    }
 
     #[test]
     fn animals_cycle_through_all_and_wrap() {

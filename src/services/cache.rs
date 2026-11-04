@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::model::{BotMessage, clean_text};
+use crate::model::{BotMessage, clean_text, safe_link};
 
 /// Last good message per bot plus the shared rate-limit backoff.
 /// Every operation is best-effort: a broken cache only costs the offline fallback.
@@ -41,9 +41,10 @@ impl Cache {
         write_atomic(
             &self.message_path(key),
             &format!(
-                "{}\n{}\n{}",
+                "{}\n{}\n{}\n{}",
                 msg.source_label,
                 msg.title.as_deref().unwrap_or_default(),
+                msg.link.as_deref().unwrap_or_default(),
                 msg.text
             ),
         );
@@ -51,12 +52,12 @@ impl Cache {
 
     pub fn load_message(&self, key: &str) -> Option<BotMessage> {
         let saved = fs::read_to_string(self.message_path(key)).ok()?;
-        // `label\ntitle\ntext`; older builds wrote `label\ntext`.
-        let mut lines = saved.splitn(3, '\n');
-        let label = lines.next()?;
-        let (title, body) = match (lines.next(), lines.next()) {
-            (Some(title), Some(body)) => (clean_text(title), body),
-            (Some(body), None) => (String::new(), body),
+        // `label\ntitle\nlink\ntext`; older builds wrote `label\ntext`.
+        let lines: Vec<&str> = saved.splitn(4, '\n').collect();
+        let (label, title, link, body) = match lines[..] {
+            [label, title, link, body] => (label, clean_text(title), safe_link(link), body),
+            [label, title, body] => (label, clean_text(title), None, body),
+            [label, body] => (label, String::new(), None, body),
             _ => return None,
         };
         let body = clean_text(body);
@@ -68,6 +69,7 @@ impl Cache {
         Some(BotMessage {
             source_label: label.split(' ').next().unwrap_or_default().to_string(),
             title: (!title.is_empty()).then_some(title),
+            link,
             text: body,
         })
     }
@@ -125,6 +127,7 @@ pub(crate) mod tests {
         let msg = BotMessage {
             source_label: "@bot@example.com".into(),
             title: Some("Hydration".into()),
+            link: Some("https://example.com/hydration".into()),
             text: "Drink water".into(),
         };
         cache.save_message("@bot@example.com", &msg);

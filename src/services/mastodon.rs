@@ -4,7 +4,7 @@ use feed_rs::parser;
 
 use crate::config::Config;
 use crate::error::{AppError, Result};
-use crate::model::{BOT_SLOTS, BotMessage, BotSource, clean_text, split_acct};
+use crate::model::{BOT_SLOTS, BotMessage, BotSource, clean_text, safe_link, split_acct};
 use crate::services::cache::Cache;
 use crate::services::http::{self, HttpError, encode_query};
 use crate::services::mock;
@@ -105,7 +105,7 @@ fn fetch_one(source: &BotSource) -> Result<BotMessage> {
         ))
     })?;
 
-    let (title, text) = match http::get_bytes(&url)
+    let post = match http::get_bytes(&url)
         .map_err(AppError::from)
         .and_then(|bytes| latest_post(&bytes))
     {
@@ -113,14 +113,18 @@ fn fetch_one(source: &BotSource) -> Result<BotMessage> {
         Err(rss_err) if rss_err.is_rate_limited() => return Err(rss_err),
         Err(rss_err) => match source {
             // Empty or broken RSS: try the public REST API for account sources.
-            BotSource::Acct(acct) => (None, fetch_rest(acct).map_err(|_| rss_err)?),
+            BotSource::Acct(acct) => Post {
+                text: fetch_rest(acct).map_err(|_| rss_err)?,
+                ..Post::default()
+            },
             BotSource::FeedUrl(_) => return Err(rss_err),
         },
     };
     Ok(BotMessage {
         source_label: source.label(),
-        title,
-        text,
+        title: post.title,
+        link: post.link,
+        text: post.text,
     })
 }
 
@@ -149,8 +153,17 @@ fn fetch_rest(acct: &str) -> Result<String> {
 /// Blog posts can run to thousands of words; a panel shows a few lines.
 const MAX_TEXT_CHARS: usize = 600;
 
-/// Title (when the feed has real ones; Mastodon's don't) and text of the newest post.
-pub fn latest_post(feed_bytes: &[u8]) -> Result<(Option<String>, String)> {
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Post {
+    /// Only when the feed has real titles (blogs, news); Mastodon's don't.
+    pub title: Option<String>,
+    /// Only alongside a title, which links to it.
+    pub link: Option<String>,
+    pub text: String,
+}
+
+/// The newest post in an RSS or Atom feed.
+pub fn latest_post(feed_bytes: &[u8]) -> Result<Post> {
     let feed =
         parser::parse(feed_bytes).map_err(|e| AppError::Feed(format!("RSS parse error: {e}")))?;
 
@@ -173,12 +186,35 @@ pub fn latest_post(feed_bytes: &[u8]) -> Result<(Option<String>, String)> {
         .unwrap_or_default();
     let body = truncate_chars(&body, MAX_TEXT_CHARS);
 
+    let text_only = |text| Post {
+        text,
+        ..Post::default()
+    };
     match title {
-        Some(title) if body.is_empty() => Ok((None, title)),
+        Some(title) if body.is_empty() => Ok(text_only(title)),
         // Feeds without real titles often repeat the start of the post instead.
-        Some(title) if body.starts_with(title.trim_end_matches(['…', '.'])) => Ok((None, body)),
-        title => Ok((title, non_empty(body)?)),
+        Some(title) if body.starts_with(title.trim_end_matches(['…', '.'])) => {
+            Ok(text_only(body))
+        }
+        None => Ok(text_only(non_empty(body)?)),
+        Some(title) => Ok(Post {
+            title: Some(title),
+            link: entry_link(entry),
+            text: body,
+        }),
     }
+}
+
+/// The post's own page: its `alternate` link, else the first web link.
+fn entry_link(entry: &feed_rs::model::Entry) -> Option<String> {
+    let alternate = entry
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref().is_none_or(|rel| rel == "alternate"));
+    alternate
+        .into_iter()
+        .chain(&entry.links)
+        .find_map(|l| safe_link(&l.href))
 }
 
 fn truncate_chars(text: &str, max: usize) -> String {
@@ -297,8 +333,9 @@ mod tests {
     #[test]
     fn parses_fixture_rss() {
         let bytes = include_bytes!("../../fixtures/bots/selfcare.rss");
-        let (title, text) = latest_post(bytes).unwrap();
+        let Post { title, link, text } = latest_post(bytes).unwrap();
         assert_eq!(title, None, "Mastodon posts have no titles");
+        assert_eq!(link, None);
         assert!(text.contains("timer"));
         assert!(text.contains("breaks"));
         assert!(!text.contains('<'), "expected tags stripped: {text}");
@@ -313,6 +350,7 @@ mod tests {
   <entry>
     <title>Toby&#39;s A levels</title>
     <id>https://example.com/a-levels</id>
+    <link rel="alternate" href="https://example.com/2026/10/a-levels"/>
     <updated>2026-10-31T16:03:03Z</updated>
     <content type="html">&lt;p&gt;Hooray!!&lt;/p&gt;&lt;p&gt;Toby got his &lt;em&gt;A level&lt;/em&gt; results.&lt;/p&gt;</content>
   </entry>
@@ -320,15 +358,30 @@ mod tests {
 
     #[test]
     fn blog_posts_keep_their_title_and_paragraph_breaks() {
-        let (title, text) = latest_post(BLOG.as_bytes()).unwrap();
-        assert_eq!(title.as_deref(), Some("Toby's A levels"));
-        assert_eq!(text, "Hooray!! Toby got his A level results.");
+        let post = latest_post(BLOG.as_bytes()).unwrap();
+        assert_eq!(post.title.as_deref(), Some("Toby's A levels"));
+        assert_eq!(
+            post.link.as_deref(),
+            Some("https://example.com/2026/10/a-levels")
+        );
+        assert_eq!(post.text, "Hooray!! Toby got his A level results.");
+    }
+
+    #[test]
+    fn non_web_post_links_are_dropped() {
+        let hostile = BLOG.replace(
+            "https://example.com/2026/10/a-levels",
+            "javascript:alert(1)",
+        );
+        let post = latest_post(hostile.as_bytes()).unwrap();
+        assert!(post.title.is_some());
+        assert_eq!(post.link, None);
     }
 
     #[test]
     fn long_posts_are_trimmed() {
         let long = BLOG.replace("Hooray!!", &"word ".repeat(400));
-        let (_, text) = latest_post(long.as_bytes()).unwrap();
+        let text = latest_post(long.as_bytes()).unwrap().text;
         assert!(text.chars().count() <= MAX_TEXT_CHARS + 1);
         assert!(text.ends_with('…'));
     }

@@ -1,5 +1,6 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::model::Animal;
 use crate::theme::Theme;
@@ -66,7 +67,7 @@ pub fn say_box_lines(
 fn push_bubble(lines: &mut Vec<Line<'static>>, wrapped: &[String], min_inner: usize, style: Style) {
     let width = wrapped
         .iter()
-        .map(|l| l.chars().count())
+        .map(|l| l.width())
         .max()
         .unwrap_or(0)
         .max(min_inner);
@@ -75,39 +76,38 @@ fn push_bubble(lines: &mut Vec<Line<'static>>, wrapped: &[String], min_inner: us
     lines.push(Line::from(Span::styled(edge.clone(), style)));
     for row in wrapped {
         lines.push(Line::from(Span::styled(
-            format!("{pad}| {row:<width$} |"),
+            format!("{pad}| {row}{} |", " ".repeat(width - row.width())),
             style,
         )));
     }
     lines.push(Line::from(Span::styled(edge, style)));
 }
 
-fn wrap_text(message: &str, width: usize) -> Vec<String> {
+/// Word-wraps to `width` terminal columns, splitting words that don't fit.
+pub(crate) fn wrap_text(message: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
     let mut rows = Vec::new();
     let mut current = String::new();
     for word in message.split_whitespace() {
-        if word.chars().count() > width {
+        let word_width = word.width();
+        if word_width > width {
             if !current.is_empty() {
                 rows.push(std::mem::take(&mut current));
             }
-            let mut chunk = String::new();
             for ch in word.chars() {
-                if chunk.chars().count() >= width {
-                    rows.push(std::mem::take(&mut chunk));
+                if current.width() + ch.width().unwrap_or(0) > width {
+                    rows.push(std::mem::take(&mut current));
                 }
-                chunk.push(ch);
-            }
-            if !chunk.is_empty() {
-                current = chunk;
+                current.push(ch);
             }
             continue;
         }
-        let next_len = if current.is_empty() {
-            word.chars().count()
+        let next_width = if current.is_empty() {
+            word_width
         } else {
-            current.chars().count() + 1 + word.chars().count()
+            current.width() + 1 + word_width
         };
-        if next_len > width && !current.is_empty() {
+        if next_width > width && !current.is_empty() {
             rows.push(std::mem::take(&mut current));
         }
         if !current.is_empty() {
@@ -130,6 +130,12 @@ mod tests {
 
     fn text_of(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn wraps_by_terminal_columns_not_chars() {
+        assert_eq!(wrap_text("日本語のタイトル", 4), ["日本", "語の", "タイ", "トル"]);
+        assert_eq!(wrap_text("✨ cat ✨", 5), ["✨", "cat", "✨"]);
     }
 
     #[test]

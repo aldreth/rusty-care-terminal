@@ -75,7 +75,7 @@ export RCT_BOTS='selfcare@hachyderm.io,https://tarrant.org.uk/feed.xml,https://m
 ```
 
 - The newest entry is shown, refreshed on the same schedule as the bots.
-- Entries with a title (most blogs and news feeds) show it in bold above the post, and the say-box shows only the title. Entries without one (Mastodon posts) show just the text.
+- Entries with a title (most blogs and news feeds) show it above the post as a link to the full post (clickable in terminals with OSC 8 hyperlinks, such as Ghostty, kitty, iTerm2 and WezTerm), and the say-box shows only the title. Entries without one (Mastodon posts) show just the text.
 - HTML is reduced to plain text, images aren't shown and long posts are cut to about 600 characters, so feeds that publish a summary read best.
 - The URL must start with `http://` or `https://`. Feed slots have no profile link above the text, and there's no REST fallback, so a broken feed shows its cached or built-in message.
 

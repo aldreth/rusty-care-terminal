@@ -8,6 +8,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{BarChart, Block, BorderType, Borders, Clear, Paragraph, Widget, Wrap};
 
+use unicode_width::UnicodeWidthChar;
+
 use crate::app::{App, FocusView, PomodoroPhase};
 use crate::model::profile_url_from_acct;
 use crate::services::mock;
@@ -338,11 +340,21 @@ fn draw_bot_panel(
     let lines = match app.messages.get(index) {
         Some(msg) => {
             let mut lines = Vec::with_capacity(2);
-            if let Some(title) = &msg.title {
-                lines.push(Line::styled(
+            match (&msg.title, &msg.link) {
+                (Some(title), Some(link)) => {
+                    let style = theme
+                        .accent_style()
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+                    for row in art::wrap_text(title, body.width.into()) {
+                        let row_area = take_rows(&mut body, 1);
+                        render_osc8_hyperlink(frame.buffer_mut(), row_area, &row, link, style);
+                    }
+                }
+                (Some(title), None) => lines.push(Line::styled(
                     title.clone(),
                     text_style.add_modifier(Modifier::BOLD),
-                ));
+                )),
+                (None, _) => {}
             }
             lines.push(Line::styled(msg.text.clone(), text_style));
             lines
@@ -393,9 +405,16 @@ fn render_osc8_hyperlink(buf: &mut Buffer, area: Rect, text: &str, url: &str, st
         return;
     }
 
-    // Acct labels and URLs are ASCII; truncate by char count to the cell run we occupy.
-    let visible: String = text.chars().take(area.width as usize).collect();
-    let width = visible.chars().count() as u16;
+    let mut visible = String::new();
+    let mut width = 0u16;
+    for ch in text.chars() {
+        let ch_width = ch.width().unwrap_or(0) as u16;
+        if width + ch_width > area.width {
+            break;
+        }
+        visible.push(ch);
+        width += ch_width;
+    }
     let Some(forced) = NonZeroU16::new(width) else {
         return;
     };
