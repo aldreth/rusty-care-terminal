@@ -7,7 +7,8 @@ It ships as a single binary and is configured with **environment variables** and
 ## Features
 
 - Today (last 24 hours) and last-week git panels plus a bar chart, showing commits where **you** are the author, committer or a `Co-authored-by` co-author
-- Messages from three Mastodon bots (`@user@instance` → `https://{host}/@{user}.rss`, or any RSS/Atom feed URL), with a public REST fallback, an offline cache and rate-limit backoff
+- Messages from three Mastodon bots (`@user@instance` → `https://{host}/@{user}.rss`), with a public REST fallback, an offline cache and rate-limit backoff
+- Any slot can be a generic RSS or Atom feed instead (a blog, news site or Mastodon hashtag); posts with titles show them ([details](./CONFIGURATION.md#other-rss-and-atom-feeds))
 - A say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
 - Weather from [Open-Meteo](https://open-meteo.com/) (city name or `lat,lon`, no API key)
 - A pomodoro timer in the say-box

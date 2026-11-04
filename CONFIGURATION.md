@@ -36,7 +36,7 @@ A commit is shown if one of your emails is its author, committer or a `Co-author
 
 ## Bots
 
-Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Any other RSS or Atom feed works too: put its `https://` URL in `RCT_BOTS`. Posts with titles (a blog, say) show the title in bold above the start of the post, and the say-box shows just the title. Three slots are shown; the first bot feeds the say-box and the next two the side panels. Text posts work best, since images aren't shown.
+Any public Mastodon account works: `user@instance` is read from `https://{instance}/@{user}.rss`. Any other RSS or Atom feed works too; see [Other RSS and Atom feeds](#other-rss-and-atom-feeds). Three slots are shown; the first bot feeds the say-box and the next two the side panels. Text posts work best, since images aren't shown.
 
 ### Defaults
 
@@ -65,6 +65,19 @@ Text bots that were posting as of November 2026, for when you'd rather be baffle
 [Magic Realism Bot](https://x.com/magicrealismbot) isn't on Mastodon. `obliquestions` and `petrock` are the closest in spirit. [fedi.directory](https://fedi.directory/tag/bots/) and [Stefan Bohacek's bot showcase](https://bots.stefanbohacek.com/) list more.
 
 Gentler alternatives: `scream@bots.robots.rodeo`, `meditation@fedigroups.social` and `3goodthings@fedigroups.social` (often an empty feed).
+
+### Other RSS and Atom feeds
+
+Any slot in `RCT_BOTS` can be a public RSS or Atom feed URL instead of a Mastodon account: a blog, a news site, a Mastodon hashtag (`https://mastodon.social/tags/cats.rss`) or anything else that publishes a feed. Mix them freely:
+
+```bash
+export RCT_BOTS='selfcare@hachyderm.io,https://tarrant.org.uk/feed.xml,https://mastodon.social/tags/cats.rss'
+```
+
+- The newest entry is shown, refreshed on the same schedule as the bots.
+- Entries with a title (most blogs and news feeds) show it in bold above the post, and the say-box shows only the title. Entries without one (Mastodon posts) show just the text.
+- HTML is reduced to plain text, images aren't shown and long posts are cut to about 600 characters, so feeds that publish a summary read best.
+- The URL must start with `http://` or `https://`. Feed slots have no profile link above the text, and there's no REST fallback, so a broken feed shows its cached or built-in message.
 
 ## Appearance
 
