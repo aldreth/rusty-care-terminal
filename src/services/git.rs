@@ -272,4 +272,142 @@ mod tests {
         assert!(parse_log_line(&line, &["nobody@example.com".into()], "~/x").is_none());
         assert!(parse_log_line("garbage", &yours(), "~/x").is_none());
     }
+
+    fn temp_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("rct-git-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let status = git(repo)
+            .args(["-c", "commit.gpgsign=false", "-c", "core.hooksPath="])
+            .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .status()
+            .expect("git runs");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn init_repo(path: &Path, local_email: &str) {
+        std::fs::create_dir_all(path).unwrap();
+        run_git(path, &["init", "-q"]);
+        run_git(path, &["config", "user.email", local_email]);
+        run_git(path, &["config", "user.name", "Test"]);
+    }
+
+    fn commit(repo: &Path, message: &str, author: &str, committer: &str, days_ago: i64) {
+        let when = (Local::now() - Duration::days(days_ago)).to_rfc3339();
+        let status = git(repo)
+            .args([
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "--allow-empty",
+            ])
+            .args(["--no-verify", "-m", message])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Author")
+            .env("GIT_AUTHOR_EMAIL", author)
+            .env("GIT_COMMITTER_NAME", "Committer")
+            .env("GIT_COMMITTER_EMAIL", committer)
+            .env("GIT_AUTHOR_DATE", &when)
+            .env("GIT_COMMITTER_DATE", &when)
+            .status()
+            .expect("git runs");
+        assert!(status.success(), "commit {message:?} failed");
+    }
+
+    /// `root/mine` with a mix of commits, plus `root/nested/deep` two levels down.
+    fn fixture_repos(name: &str) -> PathBuf {
+        let root = temp_root(name);
+        let mine = root.join("mine");
+        init_repo(&mine, "edward@aldreth.com");
+        // Oldest first: `--since` stops walking at the first commit past the cutoff.
+        commit(
+            &mine,
+            "too old",
+            "edward@aldreth.com",
+            "edward@aldreth.com",
+            10,
+        );
+        commit(
+            &mine,
+            "mine today",
+            "edward@aldreth.com",
+            "edward@aldreth.com",
+            0,
+        );
+        commit(
+            &mine,
+            "pairing\n\nCo-authored-by: Ed <Edward@Aldreth.com>",
+            "pair@example.com",
+            "pair@example.com",
+            3,
+        );
+        commit(
+            &mine,
+            "not mine",
+            "other@example.com",
+            "other@example.com",
+            0,
+        );
+        init_repo(&root.join("nested/deep"), "work@example.com");
+        commit(
+            &root.join("nested/deep"),
+            "work today",
+            "work@example.com",
+            "work@example.com",
+            0,
+        );
+        std::fs::create_dir_all(root.join("not-a-repo")).unwrap();
+        root
+    }
+
+    fn subjects(entries: &[CommitEntry]) -> Vec<&str> {
+        entries.iter().map(|c| c.subject.as_str()).collect()
+    }
+
+    #[test]
+    fn collects_your_commits_from_real_repos() {
+        let root = fixture_repos("explicit");
+        let missing = root.join("missing");
+        let (stats, warnings) = collect_commits(&[root.clone(), missing.clone()], 1, &yours());
+
+        assert_eq!(subjects(&stats.today), ["mine today"]);
+        assert_eq!(subjects(&stats.week), ["mine today", "pairing"]);
+        assert_eq!(
+            warnings,
+            [format!("repo path missing: {}", missing.display())]
+        );
+        assert!(stats.week.iter().all(|c| c.repo.ends_with("mine")));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn falls_back_to_each_repos_user_email_and_searches_deeper() {
+        let root = fixture_repos("fallback");
+        assert_eq!(
+            discover_repos(std::slice::from_ref(&root), 3),
+            [root.join("mine"), root.join("nested/deep")]
+        );
+        let (stats, warnings) = collect_commits(std::slice::from_ref(&root), 3, &[]);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut today = subjects(&stats.today);
+        today.sort_unstable();
+        assert_eq!(today, ["mine today", "work today"]);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn broken_repo_is_a_warning_not_a_crash() {
+        let root = temp_root("broken");
+        std::fs::create_dir_all(root.join("fake/.git")).unwrap();
+        let (stats, warnings) = collect_commits(std::slice::from_ref(&root), 1, &yours());
+        assert!(stats.week.is_empty());
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

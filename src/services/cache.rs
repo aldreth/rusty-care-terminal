@@ -122,6 +122,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn reads_messages_cached_by_older_builds() {
+        let cache = temp_cache("old-format");
+        let path = cache.message_path("@bot@example.com");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "@bot@example.com → https://x\nStretch").unwrap();
+        let msg = cache.load_message("@bot@example.com").unwrap();
+        assert_eq!(msg.source_label, "@bot@example.com");
+        assert_eq!((msg.title, msg.link), (None, None));
+        assert_eq!(msg.text, "Stretch");
+
+        fs::write(&path, "@bot@example.com\nTitle\njavascript:x\nBody").unwrap();
+        let msg = cache.load_message("@bot@example.com").unwrap();
+        assert_eq!(msg.title.as_deref(), Some("Title"));
+        assert_eq!(msg.link, None, "unsafe links are dropped on load too");
+
+        fs::write(&path, "@bot@example.com\n\n\n   ").unwrap();
+        assert!(cache.load_message("@bot@example.com").is_none());
+        let _ = fs::remove_dir_all(&cache.root);
+    }
+
+    #[test]
     fn roundtrip_message_cache() {
         let cache = temp_cache("roundtrip");
         let msg = BotMessage {

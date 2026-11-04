@@ -39,3 +39,20 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: test
         run: cargo test --locked
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install toolchain
+        run: rustup toolchain install && rustup component add llvm-tools
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      # The terminal loop (main.rs) and live HTTP calls aren't unit-testable;
+      # everything else sits around 90%, so this catches real regressions.
+      - name: coverage
+        run: cargo llvm-cov --locked --fail-under-lines 85

@@ -160,6 +160,52 @@ mod tests {
     }
 
     #[test]
+    fn fahrenheit_with_sparse_data_still_reads_well() {
+        let forecast = json!({ "current": { "temperature_2m": 52.4, "weather_code": 1234 } });
+        let snap = snapshot_from_forecast(&forecast, "Here".into(), false).unwrap();
+        assert_eq!(snap.temperature, "52°F");
+        assert_eq!(snap.summary, "Mixed skies");
+        assert_eq!(snap.high_low, "H 52°F · L 52°F");
+        assert_eq!(snap.wind, "");
+    }
+
+    #[test]
+    fn lat_lon_locations_skip_the_geocoder() {
+        let (label, lat, lon) = resolve_location(" 51.5 , -0.12 ").unwrap();
+        assert_eq!(label, "51.50,-0.12");
+        assert_eq!((lat, lon), (51.5, -0.12));
+    }
+
+    #[test]
+    fn unknown_or_incomplete_places_are_errors() {
+        assert!(place_from_geocode(&json!({}), "Nowhere").is_err());
+        assert!(place_from_geocode(&json!({ "results": [] }), "Nowhere").is_err());
+        let no_lat = json!({ "results": [{ "name": "X", "longitude": 1.0 }] });
+        assert!(place_from_geocode(&no_lat, "X").is_err());
+        let no_country = json!({ "results": [{ "latitude": 1.0, "longitude": 2.0 }] });
+        assert_eq!(place_from_geocode(&no_country, "Query").unwrap().0, "Query");
+    }
+
+    #[test]
+    fn wmo_codes_cover_common_weather() {
+        for (code, text) in [
+            (3, "Overcast"),
+            (45, "Fog"),
+            (55, "Drizzle"),
+            (57, "Freezing drizzle"),
+            (66, "Freezing rain"),
+            (73, "Snow"),
+            (77, "Snow grains"),
+            (81, "Rain showers"),
+            (86, "Snow showers"),
+            (95, "Thunderstorm"),
+            (99, "Thunderstorm + hail"),
+        ] {
+            assert_eq!(wmo_description(code), text, "code {code}");
+        }
+    }
+
+    #[test]
     fn geocode_place_is_cleaned() {
         let reply = json!({ "results": [{
             "name": "Lon\u{1b}[2Jdon", "country": "United Kingdom",

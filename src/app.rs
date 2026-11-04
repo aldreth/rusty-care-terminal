@@ -465,6 +465,165 @@ mod tests {
     }
 
     #[test]
+    fn pomodoro_keys_only_work_once_it_is_open() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+        assert!(!app.pomodoro.running);
+        assert_eq!(app.pomodoro.work_mins, app.config.pomodoro);
+
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+        assert!(app.pomodoro.active);
+        press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+        assert_eq!(app.pomodoro.work_mins, app.config.pomodoro + 1);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::NONE);
+        assert!(app.pomodoro.running);
+        press(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
+        assert!(!app.pomodoro.running);
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+        assert!(!app.pomodoro.active);
+    }
+
+    #[test]
+    fn pomodoro_alternates_work_and_break() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::NONE);
+        app.pomodoro.remaining = Duration::ZERO;
+        app.pomodoro.tick();
+        assert_eq!(app.pomodoro.phase, PomodoroPhase::Break);
+        assert!(!app.pomodoro.running, "each phase waits for `s`");
+        assert_eq!(
+            app.pomodoro.remaining,
+            Duration::from_secs(app.pomodoro.break_mins * 60)
+        );
+
+        // Paused: time doesn't move.
+        let before = app.pomodoro.remaining;
+        thread::sleep(Duration::from_millis(5));
+        app.pomodoro.tick();
+        assert_eq!(app.pomodoro.remaining, before);
+
+        app.pomodoro.running = true;
+        thread::sleep(Duration::from_millis(5));
+        app.pomodoro.tick();
+        assert!(app.pomodoro.remaining < before);
+
+        app.pomodoro.remaining = Duration::ZERO;
+        app.pomodoro.tick();
+        assert_eq!(app.pomodoro.phase, PomodoroPhase::Work);
+    }
+
+    #[test]
+    fn focus_views_and_scrolling() {
+        let mut app = offline_app();
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
+        assert!(!app.show_help, "opening a list closes help");
+        assert_eq!(app.focus, FocusView::Week);
+        assert!(!app.scroll_today_focus);
+
+        press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!((app.scroll_today, app.scroll_week), (0, 2));
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE);
+        assert_eq!(app.scroll_today, 0, "scrolling stops at the top");
+
+        press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
+        assert_eq!(app.focus, FocusView::None);
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE);
+        assert_eq!(
+            press(&mut app, KeyCode::Esc, KeyModifiers::NONE),
+            AppAction::Continue
+        );
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn only_key_presses_and_known_ctrl_keys_count() {
+        let mut app = offline_app();
+        let mut release = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        release.kind = KeyEventKind::Release;
+        assert_eq!(app.handle_key(release), AppAction::Continue);
+        assert_eq!(
+            press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL),
+            AppAction::Continue
+        );
+        assert_eq!(
+            press(&mut app, KeyCode::Char('d'), KeyModifiers::CONTROL),
+            AppAction::Quit
+        );
+    }
+
+    fn snapshot(weather: Option<Result<WeatherSnapshot, String>>) -> Snapshot {
+        Snapshot {
+            commits: CommitStats::default(),
+            messages: Vec::new(),
+            weather,
+            warnings: vec!["first".into(), "second".into()],
+        }
+    }
+
+    #[test]
+    fn a_failed_refresh_keeps_the_last_good_weather_and_messages() {
+        let mut app = offline_app();
+        wait_for_refresh(&mut app);
+        let messages = app.messages.clone();
+        let sunny = WeatherSnapshot {
+            place: "London".into(),
+            summary: "Clear sky".into(),
+            temperature: "20°C".into(),
+            high_low: String::new(),
+            wind: String::new(),
+        };
+        app.apply(snapshot(Some(Ok(sunny))));
+        app.apply(snapshot(Some(Err("offline".into()))));
+        assert_eq!(
+            app.weather.as_ref().map(|w| w.place.as_str()),
+            Some("London")
+        );
+        assert_eq!(app.messages, messages);
+        assert_eq!(app.warning.as_deref(), Some("first"));
+
+        app.apply(snapshot(None));
+        assert!(app.weather.is_none(), "location removed");
+    }
+
+    #[test]
+    fn a_crashed_refresh_is_reported() {
+        let mut app = offline_app();
+        wait_for_refresh(&mut app);
+        let (tx, rx) = mpsc::channel();
+        drop(tx);
+        app.pending = Some(rx);
+        app.loading = true;
+        app.poll_refresh();
+        assert!(!app.loading);
+        assert_eq!(app.warning.as_deref(), Some("refresh failed unexpectedly"));
+    }
+
+    #[test]
+    fn feed_titles_go_in_the_say_box() {
+        let mut app = offline_app();
+        wait_for_refresh(&mut app);
+        app.messages[0].title = Some("A blog post".into());
+        assert_eq!(app.say_box_message(), "A blog post");
+        app.messages.clear();
+        assert_eq!(app.say_box_message(), mock::DEFAULT_MESSAGE);
+    }
+
+    #[test]
+    fn auto_refresh_waits_for_the_interval() {
+        let mut app = offline_app();
+        wait_for_refresh(&mut app);
+        assert!(!app.should_auto_refresh());
+        app.last_refresh =
+            Instant::now() - Duration::from_secs(app.config.update_interval_mins * 60);
+        assert!(app.should_auto_refresh());
+    }
+
+    #[test]
     fn a_cycles_animals() {
         let mut app = offline_app();
         let first = app.current_animal();

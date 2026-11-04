@@ -368,6 +368,47 @@ mod tests {
     }
 
     #[test]
+    fn empty_slots_and_backoff_never_touch_the_network() {
+        let cfg = Config::default();
+        let (msg, warning) = message_for_slot(&cfg, 2, None, None, false);
+        assert_eq!(msg, mock::fallback_message(&cfg, 2));
+        assert_eq!(warning, None);
+
+        let cache = crate::services::cache::tests::temp_cache("slot-backoff");
+        let source = BotSource::parse("bot@example.invalid");
+        let cached = BotMessage {
+            source_label: source.label(),
+            title: None,
+            link: None,
+            text: "from the cache".into(),
+        };
+        cache.save_message(&source.label(), &cached);
+        let (msg, warning) = message_for_slot(&cfg, 0, Some(&source), Some(&cache), true);
+        assert_eq!(msg, cached);
+        assert_eq!(warning, None);
+    }
+
+    #[test]
+    fn invalid_accounts_warn_and_fall_back() {
+        let cfg = Config::default();
+        let source = BotSource::parse("not-an-account");
+        let (msg, warning) = message_for_slot(&cfg, 1, Some(&source), None, false);
+        assert_eq!(msg.text, mock::fallback_message(&cfg, 1).text);
+        assert!(warning.unwrap().contains("not a valid"));
+    }
+
+    #[test]
+    fn mock_mode_skips_feeds() {
+        let cfg = Config {
+            mock: true,
+            ..Config::default()
+        };
+        let (messages, warnings) = fetch_messages(&cfg);
+        assert_eq!(messages.len(), BOT_SLOTS);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
     fn non_web_post_links_are_dropped() {
         let hostile = BLOG.replace(
             "https://example.com/2026/10/a-levels",

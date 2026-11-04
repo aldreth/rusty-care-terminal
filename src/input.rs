@@ -241,6 +241,31 @@ mod tests {
     }
 
     #[test]
+    fn reads_alt_enter_backspace_and_utf8() {
+        let got = Parser::default().feed("\x1bj\r\x7f\x1c£🦙\x1b\x01".as_bytes());
+        assert_eq!(
+            got,
+            [
+                key(KeyCode::Char('j'), KeyModifiers::ALT).unwrap(),
+                key(KeyCode::Enter, KeyModifiers::NONE).unwrap(),
+                key(KeyCode::Backspace, KeyModifiers::NONE).unwrap(),
+                key(KeyCode::Char('£'), KeyModifiers::NONE).unwrap(),
+                key(KeyCode::Char('🦙'), KeyModifiers::NONE).unwrap(),
+                key(KeyCode::Esc, KeyModifiers::NONE).unwrap(),
+                key(KeyCode::Char('a'), KeyModifiers::CONTROL).unwrap(),
+            ]
+        );
+    }
+
+    #[test]
+    fn utf8_split_across_reads_is_joined() {
+        let llama = "🦙".as_bytes();
+        let mut parser = Parser::default();
+        assert!(parser.feed(&llama[..2]).is_empty());
+        assert_eq!(keys(&parser.feed(&llama[2..])), [KeyCode::Char('🦙')]);
+    }
+
+    #[test]
     fn ctrl_c_and_lone_escape() {
         let got = Parser::default().feed(b"\x03");
         assert_eq!(

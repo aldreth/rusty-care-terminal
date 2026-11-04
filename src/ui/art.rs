@@ -134,7 +134,10 @@ mod tests {
 
     #[test]
     fn wraps_by_terminal_columns_not_chars() {
-        assert_eq!(wrap_text("日本語のタイトル", 4), ["日本", "語の", "タイ", "トル"]);
+        assert_eq!(
+            wrap_text("日本語のタイトル", 4),
+            ["日本", "語の", "タイ", "トル"]
+        );
         assert_eq!(wrap_text("✨ cat ✨", 5), ["✨", "cat", "✨"]);
     }
 

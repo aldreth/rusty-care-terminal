@@ -119,6 +119,15 @@ cargo test --locked
 cargo test -- --ignored   # live Mastodon fetch (needs network)
 ```
 
+Coverage uses [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov). CI fails if line coverage drops below 85%:
+
+```bash
+rustup component add llvm-tools
+cargo install cargo-llvm-cov --locked
+cargo llvm-cov --summary-only        # per-file table
+cargo llvm-cov --open                # browsable HTML report
+```
+
 Profiles (via [cargo-wizard](https://github.com/kobzol/cargo-wizard)):
 
 - **dev**: `debug = 0` for quicker rebuilds
