@@ -18,6 +18,7 @@ use crate::ui::art;
 
 const KEY_HINTS: &str =
     "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo · a animal";
+const LOADING: &str = "loading…";
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = app.theme;
@@ -506,11 +507,24 @@ fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         let short = truncate(err, 40);
         text = format!("{text} · {short}");
     }
+    // Right-aligned in its own column so the hints don't jump when it comes and goes.
+    let mut hints_area = area;
     if app.loading {
-        text = format!("loading… · {text}");
+        let loading = Line::from(LOADING);
+        let width = (loading.width() as u16 + 1).min(area.width);
+        hints_area.width -= width;
+        let loading_area = Rect {
+            x: hints_area.right(),
+            width,
+            ..area
+        };
+        frame.render_widget(
+            Paragraph::new(loading.right_aligned()).style(theme.muted_style()),
+            loading_area,
+        );
     }
     let widget = Paragraph::new(text).style(theme.muted_style());
-    frame.render_widget(widget, area);
+    frame.render_widget(widget, hints_area);
 }
 
 fn draw_focus_view(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -627,7 +641,135 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use super::*;
+    use crate::config::Config;
+
+    fn offline_app() -> App {
+        App::new(Config {
+            mock: true,
+            ..Config::default()
+        })
+    }
+
+    fn render(app: &App, width: u16, height: u16) -> Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn row_text(buf: &Buffer, y: u16) -> String {
+        (0..buf.area.width)
+            .map(|x| buf[(x, y)].symbol())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn loading_sits_right_of_the_footer_without_moving_the_hints() {
+        let mut app = offline_app();
+        app.loading = true;
+        let footer = row_text(&render(&app, 120, 40), 39);
+        assert!(footer.starts_with(KEY_HINTS), "{footer}");
+        assert!(footer.trim_end().ends_with(LOADING), "{footer}");
+
+        app.loading = false;
+        let footer = row_text(&render(&app, 120, 40), 39);
+        assert!(footer.starts_with(KEY_HINTS), "{footer}");
+        assert!(!footer.contains(LOADING), "{footer}");
+    }
+
+    fn screen_text(buf: &Buffer) -> String {
+        (0..buf.area.height)
+            .map(|y| row_text(buf, y))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn busy_app() -> App {
+        let mut app = offline_app();
+        app.loading = false;
+        let entry = |repo: &str, hash: &str, subject: &str| crate::model::CommitEntry {
+            repo: repo.into(),
+            hash: hash.into(),
+            subject: subject.into(),
+            when: Local::now(),
+        };
+        app.commits.today = vec![entry("~/Code/a", "aaaaaaa", "Fix the llama")];
+        app.commits.week = vec![
+            entry("~/Code/a", "aaaaaaa", "Fix the llama"),
+            entry("~/Code/b", "bbbbbbb", "Add feeds"),
+        ];
+        app.weather = Some(crate::model::WeatherSnapshot {
+            place: "London, United Kingdom".into(),
+            summary: "Rain".into(),
+            temperature: "12°C".into(),
+            high_low: "H 13°C · L 7°C".into(),
+            wind: "wind 14 km/h".into(),
+        });
+        app.config.weather = Some("London".into());
+        app.messages = crate::services::mock::mock_messages(&app.config);
+        app.messages[1].title = Some("Toby's A levels".into());
+        app.messages[1].link = Some("https://example.com/a-levels".into());
+        app.messages[1].text = "Hooray!! Toby got his results.".into();
+        app.warning = Some("bot @x@y: offline".into());
+        app
+    }
+
+    #[test]
+    fn dashboard_shows_commits_weather_and_bots() {
+        let app = busy_app();
+        let buf = render(&app, 140, 40);
+        let screen = screen_text(&buf);
+        for expected in [
+            "Fix the llama",
+            "12°C",
+            "Rain",
+            "wind 14 km/h",
+            "Hooray!! Toby got his results.",
+            "bot @x@y: offline",
+        ] {
+            assert!(screen.contains(expected), "missing {expected:?}:\n{screen}");
+        }
+        let linked_title = buf.content().iter().any(|cell| {
+            cell.symbol() == "\x1B]8;;https://example.com/a-levels\x07Toby's A levels\x1B]8;;\x07"
+        });
+        assert!(linked_title, "feed title should be one OSC 8 link");
+    }
+
+    #[test]
+    fn overlays_render() {
+        let mut app = busy_app();
+        app.show_help = true;
+        assert!(screen_text(&render(&app, 120, 40)).contains("CONFIGURATION.md"));
+
+        app.show_help = false;
+        app.focus = FocusView::Week;
+        let week = screen_text(&render(&app, 120, 40));
+        assert!(week.contains("Add feeds") && week.contains("~/Code/b"));
+
+        app.focus = FocusView::Today;
+        assert!(screen_text(&render(&app, 120, 40)).contains("Fix the llama"));
+
+        app.focus = FocusView::None;
+        app.pomodoro.active = true;
+        let pomodoro = screen_text(&render(&app, 120, 40));
+        assert!(pomodoro.contains(&app.pomodoro.mmss()), "{pomodoro}");
+    }
+
+    #[test]
+    fn tiny_terminals_do_not_panic() {
+        let mut app = busy_app();
+        for (width, height) in [(1, 1), (10, 3), (30, 8), (60, 15), (80, 24)] {
+            render(&app, width, height);
+            app.show_help = true;
+            render(&app, width, height);
+            app.show_help = false;
+            app.pomodoro.active = !app.pomodoro.active;
+            render(&app, width, height);
+        }
+    }
 
     #[test]
     fn relative_time_plurals() {
