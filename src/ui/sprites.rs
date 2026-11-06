@@ -6,7 +6,7 @@
 //!
 //! Map legend: `.` transparent · `K` outline · `B` parrot blue · `P` beak ·
 //! `O` cat orange · `W` white · `p` pink · `C` llama cream · `R` red ·
-//! `Y` yellow · `T` teal
+//! `Y` yellow · `T` teal · `G` leaf green · `g` steam grey
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -34,6 +34,8 @@ fn palette(ch: char) -> Option<Rgb> {
         'R' => Some(Rgb(230, 70, 80)),
         'Y' => Some(Rgb(255, 205, 60)),
         'T' => Some(Rgb(40, 190, 180)),
+        'G' => Some(Rgb(90, 180, 80)),
+        'g' => Some(Rgb(160, 160, 170)),
         _ => None,
     }
 }
@@ -239,6 +241,68 @@ const LLAMA_SMALL: &[&str] = &[
     "...KKKK.....KKKK.",
 ];
 
+/// Pomodoro work phase. Same footprint as the bunny, so it sits at animal size.
+const TOMATO: &[&str] = &[
+    ".......KGK......",
+    ".......KGK......",
+    "....KKKKGKKK....",
+    "...KGGGGGGGGK...",
+    "..KGKKKGGKKKGK..",
+    "..KKRKGKKGKRKK..",
+    ".KRRWWKRRKRRRRK.",
+    "KRRWRRRRRRRRRRRK",
+    "KRRWRRRRRRRRRRRK",
+    "KRRRRRRRRRRRRRRK",
+    "KRRRRRRRRRRRRRRK",
+    "KRRRRRRRRRRRRRRK",
+    ".KRRRRRRRRRRRRK.",
+    "..KRRRRRRRRRRK..",
+    "...KKKKKKKKKK...",
+];
+
+const TOMATO_TINY: &[&str] = &[
+    "...KKGK...",
+    "..KGGGGK..",
+    ".KGKKKKGK.",
+    ".KKRRRRKK.",
+    "KRWRRRRRRK",
+    "KRWRRRRRRK",
+    "KRRRRRRRRK",
+    ".KRRRRRRK.",
+    "..KKKKKK..",
+];
+
+/// Pomodoro break: a steaming cup of green tea.
+const TEACUP: &[&str] = &[
+    "...g...g........",
+    "....g...g.......",
+    "...g...g........",
+    "....g...g.......",
+    "................",
+    "KKKKKKKKKKKKK...",
+    "KGGGGGGGGGGGKKK.",
+    "KWWWWWWWWWWWK.KK",
+    "KWWWWWWWWWWWK..K",
+    "KWWWWWWWWWWWK.KK",
+    ".KWWWWWWWWWKKKK.",
+    ".KWWWWWWWWWK....",
+    "..KKWWWWWKK.....",
+    "KKKKKKKKKKKKKKK.",
+    ".KWWWWWWWWWWWK..",
+];
+
+const TEACUP_TINY: &[&str] = &[
+    "..g..g....",
+    "...g..g...",
+    "..........",
+    "KKKKKKKK..",
+    "KGGGGGGKKK",
+    "KWWWWWWK.K",
+    ".KWWWWKKK.",
+    "KKKKKKKKK.",
+    ".KWWWWWK..",
+];
+
 /// A pixel grid with an anchor: the column of the head's top-left outline pixel,
 /// where the speech-bubble tail lands.
 #[derive(Clone)]
@@ -305,6 +369,16 @@ pub fn creature(animal: Animal) -> Vec<Sprite> {
             Sprite::from_map(PARROT_TINY),
         ],
     }
+}
+
+/// Pomodoro art: a tomato while working, a cup of tea on a break.
+pub fn pomodoro(working: bool) -> Vec<Sprite> {
+    let (large, tiny) = if working {
+        (TOMATO, TOMATO_TINY)
+    } else {
+        (TEACUP, TEACUP_TINY)
+    };
+    vec![Sprite::from_map(large), Sprite::from_map(tiny)]
 }
 
 /// A sprite laid out in terminal cells.
@@ -394,6 +468,10 @@ mod tests {
             LLAMA,
             LLAMA_SMALL,
             LLAMA_TINY,
+            TOMATO,
+            TOMATO_TINY,
+            TEACUP,
+            TEACUP_TINY,
         ] {
             let w = map[0].chars().count();
             assert!(map.iter().all(|r| r.chars().count() == w));
@@ -438,6 +516,18 @@ mod tests {
                     "llama {llama} vs {animal:?} {other} at {rows} rows"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn pomodoro_art_is_animal_sized() {
+        // Same footprint as the bunny, so they scale in step with it.
+        for rows in 4..=30 {
+            let size =
+                |variants: &[Sprite]| fit(variants, 60, rows).map(|p| (p.lines.len(), p.cols));
+            let bunny = size(&creature(Animal::Bunny));
+            assert_eq!(size(&pomodoro(true)), bunny, "tomato at {rows} rows");
+            assert_eq!(size(&pomodoro(false)), bunny, "teacup at {rows} rows");
         }
     }
 

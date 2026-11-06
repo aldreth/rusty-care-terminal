@@ -14,11 +14,12 @@ use crate::app::{App, FocusView, PomodoroPhase};
 use crate::model::profile_url_from_acct;
 use crate::services::mock;
 use crate::theme::Theme;
-use crate::ui::art;
+use crate::ui::{art, sprites};
 
 const KEY_HINTS: &str =
     "q quit · r refresh · h help · t/w fullscreen commits · Tab/j/k · p pomo · a animal";
 const LOADING: &str = "loading…";
+const POMODORO_ART_INDENT: u16 = 2;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = app.theme;
@@ -462,39 +463,59 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
 
 fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     let p = &app.pomodoro;
+    let working = p.phase == PomodoroPhase::Work;
     let state = if p.running { "running" } else { "paused" };
-    let phase = match p.phase {
-        PomodoroPhase::Work => "🍅 focus",
-        PomodoroPhase::Break => "🍵 break",
-    };
-    let lines = vec![
-        Line::from(Span::styled(
+    let phase = if working { "focus" } else { "break" };
+    let text = [
+        (
             format!("{phase} · {state}"),
             theme.accent_style().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
+        ),
+        (
             p.mmss(),
             Style::default()
                 .fg(theme.time_fresh)
                 .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
+        ),
+        (
             format!("work {}m · break {}m", p.work_mins, p.break_mins),
             Style::default().fg(theme.fg),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "s start/pause · e reset · u/U work± · b/B break± · p exit · h help",
+        ),
+        (
+            "s start/pause · e reset · u/U work± · b/B break± · p exit · h help".to_string(),
             theme.muted_style(),
-        )),
+        ),
     ];
-    let widget = Paragraph::new(lines)
-        .block(border_block("🍅", theme))
-        .style(theme.root_style())
-        .wrap(Wrap { trim: true });
-    frame.render_widget(widget, area);
+
+    let block = border_block("🍅", theme);
+    let mut body = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines: Vec<Line> = text
+        .iter()
+        .flat_map(|(text, style)| {
+            art::wrap_text(text, body.width.into())
+                .into_iter()
+                .map(move |row| Line::styled(row, *style))
+        })
+        .collect();
+    let text_area = take_rows(&mut body, lines.len() as u16 + 1);
+    frame.render_widget(Paragraph::new(lines).style(theme.root_style()), text_area);
+
+    // Indented like the say-box animals, at the same sizes.
+    let indent = POMODORO_ART_INDENT.min(body.width);
+    let art_cols = (body.width - indent).into();
+    if let Some(placed) = sprites::fit(&sprites::pomodoro(working), art_cols, body.height.into()) {
+        let art_area = Rect {
+            x: body.x + indent,
+            width: body.width - indent,
+            ..body
+        };
+        frame.render_widget(
+            Paragraph::new(placed.lines).style(theme.root_style()),
+            art_area,
+        );
+    }
 }
 
 fn draw_status(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
@@ -756,6 +777,38 @@ mod tests {
         app.pomodoro.active = true;
         let pomodoro = screen_text(&render(&app, 120, 40));
         assert!(pomodoro.contains(&app.pomodoro.mmss()), "{pomodoro}");
+    }
+
+    fn cells_coloured(buf: &Buffer, rgb: (u8, u8, u8)) -> usize {
+        let colour = ratatui::style::Color::Rgb(rgb.0, rgb.1, rgb.2);
+        buf.content()
+            .iter()
+            .filter(|c| c.fg == colour || c.bg == colour)
+            .count()
+    }
+
+    #[test]
+    fn pomodoro_shows_a_tomato_then_a_cup_of_tea() {
+        const TOMATO_RED: (u8, u8, u8) = (230, 70, 80);
+        const TEA_GREEN: (u8, u8, u8) = (90, 180, 80);
+        let mut app = busy_app();
+        app.animal = Some(crate::model::Animal::Bunny);
+        let bunny_cells = cells_coloured(&render(&app, 140, 40), (240, 240, 245));
+
+        app.pomodoro.active = true;
+        let work = render(&app, 140, 40);
+        assert!(screen_text(&work).contains("focus · paused"));
+        let tomato_cells = cells_coloured(&work, TOMATO_RED);
+        assert!(
+            tomato_cells * 2 > bunny_cells,
+            "tomato {tomato_cells} cells vs bunny {bunny_cells}"
+        );
+
+        app.pomodoro.phase = PomodoroPhase::Break;
+        let rest = render(&app, 140, 40);
+        assert!(screen_text(&rest).contains("break · paused"));
+        assert_eq!(cells_coloured(&rest, TOMATO_RED), 0);
+        assert!(cells_coloured(&rest, TEA_GREEN) > 0);
     }
 
     #[test]

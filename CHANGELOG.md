@@ -14,7 +14,7 @@ First release.
 - Messages from Mastodon bots over RSS (`@user@instance`, or any RSS/Atom feed URL, whose post titles are shown as links), with a public REST fallback, an offline cache and rate-limit backoff
 - Say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
 - Weather from Open-Meteo (city name or `lat,lon`), no API key needed
-- Pomodoro timer in the say-box (`p`, `s`, `e`, `u`/`U`, `b`/`B`)
+- Pomodoro timer in the say-box (`p`, `s`, `e`, `u`/`U`, `b`/`B`), with an animal-sized tomato while you work and a cup of tea on breaks
 - Fullscreen, copy-friendly commit lists (`t` / `w`) and a help screen (`h`)
 - Auto, dark and light themes that never paint over the terminal background
 - Configuration through `RCT_*` environment variables or matching flags; original `TTC_*` names still work where they make sense
