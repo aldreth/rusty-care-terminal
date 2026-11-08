@@ -1,4 +1,4 @@
-//! Say-box creatures as outlined pixel sprites, drawn with half-blocks (▀ ▄ █).
+//! Animals as outlined pixel sprites, drawn with half-blocks (▀ ▄ █).
 //!
 //! Each creature has hand-drawn size variants. Layout picks the tallest variant
 //! and integer scale that fits, so pixels stay square and crisp at any terminal

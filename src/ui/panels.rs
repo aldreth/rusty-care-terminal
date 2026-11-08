@@ -67,7 +67,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_bot_panel(frame, app, theme, 1, "💖", side[1]);
         draw_bot_panel(frame, app, theme, 2, "💬", side[2]);
         draw_week(frame, app, theme, bottom[0]);
-        draw_say_box(frame, app, theme, bottom[1]);
+        draw_animal_box(frame, app, theme, bottom[1]);
         draw_status(frame, app, theme, root[1]);
     }
 
@@ -437,7 +437,7 @@ fn render_osc8_hyperlink(buf: &mut Buffer, area: Rect, text: &str, url: &str, st
     }
 }
 
-fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
+fn draw_animal_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     if app.pomodoro.active {
         draw_pomodoro(frame, app, theme, area);
         return;
@@ -451,9 +451,9 @@ fn draw_say_box(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
         let label_row = take_rows(&mut body, 1);
         render_acct_label(frame.buffer_mut(), label_row, &label, theme);
     }
-    let lines = art::say_box_lines(
+    let lines = art::animal_box_lines(
         app.current_animal(),
-        app.say_box_message(),
+        app.animal_box_message(),
         body.width as usize,
         body.height as usize,
         theme,
@@ -502,7 +502,7 @@ fn draw_pomodoro(frame: &mut Frame, app: &App, theme: Theme, area: Rect) {
     let text_area = take_rows(&mut body, lines.len() as u16 + 1);
     frame.render_widget(Paragraph::new(lines).style(theme.root_style()), text_area);
 
-    // Indented like the say-box animals, at the same sizes.
+    // Indented like the animals, at the same sizes.
     let indent = POMODORO_ART_INDENT.min(body.width);
     let art_cols = (body.width - indent).into();
     if let Some(placed) = sprites::fit(&sprites::pomodoro(working), art_cols, body.height.into()) {
@@ -592,8 +592,8 @@ fn draw_help_modal(frame: &mut Frame, theme: Theme) {
         help_line("w", "fullscreen Week commits (copy-friendly)", theme),
         help_line("Tab", "select Today vs Week for scrolling", theme),
         help_line("j / k", "scroll selected commit list", theme),
-        help_line("a", "next say-box animal", theme),
-        help_line("p", "pomodoro in the say-box", theme),
+        help_line("a", "next animal", theme),
+        help_line("p", "toggle pomodoro", theme),
         help_line("s e", "pomodoro start/pause · reset", theme),
         help_line("u/U b/B", "pomodoro focus ± · break ± minutes", theme),
         Line::from(""),
@@ -850,8 +850,8 @@ mod tests {
     #[test]
     fn friendly_label_keeps_acct_drops_url() {
         assert_eq!(
-            friendly_bot_label("@selfcaregentle@hachyderm.io").as_deref(),
-            Some("@selfcaregentle@hachyderm.io")
+            friendly_bot_label("@selfcare@hachyderm.io").as_deref(),
+            Some("@selfcare@hachyderm.io")
         );
         assert_eq!(friendly_bot_label("https://hachyderm.io/@x.rss"), None);
         assert_eq!(friendly_bot_label(""), None);

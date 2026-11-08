@@ -13,7 +13,7 @@ const MAX_BUBBLE_TEXT: usize = 56;
 /// Speech bubble with a `\` tail landing on a pixel animal's head.
 ///
 /// Lines are pre-laid-out for `max_width` × `max_height` and must not be re-wrapped.
-pub fn say_box_lines(
+pub fn animal_box_lines(
     animal: Animal,
     message: &str,
     max_width: usize,
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn wraps_long_message_instead_of_ellipsis() {
         let msg = "Make yourself a healthy meal. It doesn't have to be fancy to count.";
-        let out = say_box_lines(Animal::Parrot, msg, 60, 20, Theme::dark());
+        let out = animal_box_lines(Animal::Parrot, msg, 60, 20, Theme::dark());
         let joined: Vec<String> = out.iter().map(text_of).collect();
         assert!(!joined.join("\n").contains("..."));
         assert!(joined.join("\n").contains("healthy"));
@@ -154,7 +154,7 @@ mod tests {
     fn never_exceeds_the_area() {
         for (w, h) in [(20, 6), (30, 10), (44, 12), (80, 24), (120, 40), (12, 3)] {
             for animal in Animal::ALL {
-                let out = say_box_lines(
+                let out = animal_box_lines(
                     animal,
                     "please remember to breathe deeply",
                     w,
@@ -183,7 +183,7 @@ mod tests {
             (Animal::Bunny, 40, 16),
             (Animal::Llama, 70, 30),
         ] {
-            let out = say_box_lines(animal, "breathe", w, h, Theme::dark());
+            let out = animal_box_lines(animal, "breathe", w, h, Theme::dark());
             let texts: Vec<String> = out.iter().map(text_of).collect();
             let tail = texts.iter().position(|l| l.trim() == "\\").expect("tail");
             let tail2_col = texts[tail + 1].chars().position(|c| c == '\\').unwrap();
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn tail_starts_inside_the_bubble() {
         for animal in Animal::ALL {
-            let out = say_box_lines(animal, "hi", 80, 30, Theme::dark());
+            let out = animal_box_lines(animal, "hi", 80, 30, Theme::dark());
             let texts: Vec<String> = out.iter().map(text_of).collect();
             let bottom = texts
                 .iter()

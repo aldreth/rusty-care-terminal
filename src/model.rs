@@ -1,9 +1,9 @@
 use chrono::{DateTime, Local};
 
-/// Number of bot slots on screen: the say-box plus two side panels.
+/// Number of bot slots on screen: the animal box plus two side panels.
 pub const BOT_SLOTS: usize = 3;
 
-/// Say-box creature.
+/// Animal in lower right panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Animal {
     Parrot,

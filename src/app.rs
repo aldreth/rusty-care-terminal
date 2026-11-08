@@ -116,7 +116,7 @@ pub struct App {
     pub scroll_today_focus: bool,
     pub show_help: bool,
     pub focus: FocusView,
-    /// Say-box animal; `None` = RANDOM until the user presses `a`.
+    /// Animal; `None` = RANDOM until the user presses `a`.
     pub animal: Option<Animal>,
     last_refresh: Instant,
     pending: Option<Receiver<Snapshot>>,
@@ -130,7 +130,7 @@ impl App {
         let mut app = Self {
             theme: Theme::for_mode(config.theme),
             pomodoro: PomodoroState::new(config.pomodoro, config.break_minutes),
-            animal: config.say_box,
+            animal: config.animal,
             config,
             commits: CommitStats::default(),
             messages: Vec::new(),
@@ -154,7 +154,7 @@ impl App {
     }
 
     /// A feed post's title is a better fit for the speech bubble than its body.
-    pub fn say_box_message(&self) -> &str {
+    pub fn animal_box_message(&self) -> &str {
         self.messages
             .first()
             .map(|m| m.title.as_deref().unwrap_or(&m.text))
@@ -169,7 +169,7 @@ impl App {
 
     pub fn current_animal(&self) -> Animal {
         self.animal
-            .unwrap_or_else(|| Animal::for_message(self.say_box_message()))
+            .unwrap_or_else(|| Animal::for_message(self.animal_box_message()))
     }
 
     /// Kicks off git / bots / weather on a worker thread; ignored if one is running.
@@ -604,13 +604,13 @@ mod tests {
     }
 
     #[test]
-    fn feed_titles_go_in_the_say_box() {
+    fn feed_titles_go_in_the_animal_box() {
         let mut app = offline_app();
         wait_for_refresh(&mut app);
         app.messages[0].title = Some("A blog post".into());
-        assert_eq!(app.say_box_message(), "A blog post");
+        assert_eq!(app.animal_box_message(), "A blog post");
         app.messages.clear();
-        assert_eq!(app.say_box_message(), mock::DEFAULT_MESSAGE);
+        assert_eq!(app.animal_box_message(), mock::DEFAULT_MESSAGE);
     }
 
     #[test]

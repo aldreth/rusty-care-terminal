@@ -5,10 +5,9 @@ use crate::model::{Animal, BotSource};
 use crate::theme::ThemeMode;
 
 const DEFAULT_BOTS: &[&str] = &[
+    "https://bsky.app/profile/did:plc:neqftbqcrgcypgrexcenyiqx/rss",
     "selfcare@hachyderm.io",
-    "selfcaregentle@hachyderm.io",
-    // GoatsLive has a lively public RSS; 3goodthings group feed is often empty.
-    "GoatsLive@mastodon.social",
+    "obliquestions@mastodon.matthewmcvickar.com",
 ];
 
 pub const MAX_POMODORO_MINS: u64 = 120;
@@ -16,10 +15,10 @@ pub const MAX_BREAK_MINS: u64 = 60;
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Mastodon accounts or feed URLs; the first feeds the say-box.
+    /// Mastodon accounts or feed URLs; the first feeds the animal box.
     pub bots: Vec<BotSource>,
-    /// Starting say-box animal; `None` = RANDOM (picked per message).
-    pub say_box: Option<Animal>,
+    /// Starting animal; `None` = RANDOM (picked per message).
+    pub animal: Option<Animal>,
     pub repos: Vec<PathBuf>,
     pub repos_depth: usize,
     /// Your commit emails, lowercased; empty means each repo's `user.email`.
@@ -40,7 +39,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             bots: DEFAULT_BOTS.iter().map(|b| BotSource::parse(b)).collect(),
-            say_box: Some(Animal::Parrot),
+            animal: Some(Animal::Parrot),
             repos: Vec::new(),
             repos_depth: 1,
             git_author_emails: Vec::new(),
@@ -62,7 +61,7 @@ pub struct CliOverrides {
     pub repos: Option<String>,
     pub repos_depth: Option<usize>,
     pub bots: Option<String>,
-    pub say_box: Option<String>,
+    pub animal: Option<String>,
     pub git_author_emails: Option<String>,
     pub update_interval: Option<u64>,
     pub weather: Option<String>,
@@ -93,9 +92,9 @@ impl Config {
             self.bots = bots;
         }
         if let Some(v) = env("TTC_SAY_BOX")
-            && let Ok(animal) = parse_say_box(&v)
+            && let Ok(animal) = parse_animal(&v)
         {
-            self.say_box = animal;
+            self.animal = animal;
         }
         if let Some(v) = env("TTC_REPOS") {
             self.repos = parse_repos(&v);
@@ -134,8 +133,8 @@ impl Config {
         if let Some(bots) = cli.bots {
             self.bots = parse_bots(&bots)?;
         }
-        if let Some(say_box) = cli.say_box {
-            self.say_box = parse_say_box(&say_box)?;
+        if let Some(animal) = cli.animal {
+            self.animal = parse_animal(&animal)?;
         }
         if let Some(emails) = cli.git_author_emails {
             self.git_author_emails = parse_emails(&emails)?;
@@ -230,7 +229,7 @@ fn parse_emails(raw: &str) -> Result<Vec<String>> {
         .collect()
 }
 
-fn parse_say_box(v: &str) -> Result<Option<Animal>> {
+fn parse_animal(v: &str) -> Result<Option<Animal>> {
     if v.trim().eq_ignore_ascii_case("random") {
         return Ok(None);
     }
@@ -280,15 +279,15 @@ mod tests {
     fn default_bots_have_rss_urls() {
         let cfg = load(CliOverrides::default(), &[]).unwrap();
         assert_eq!(cfg.bots.len(), 3);
-        assert!(cfg.bots[0].rss_url().unwrap().contains("selfcare.rss"));
+        assert!(cfg.bots[1].rss_url().unwrap().contains("selfcare.rss"));
         assert_eq!(cfg.terminal_title.as_deref(), Some("Rusty care terminal"));
     }
 
     #[test]
-    fn say_box_accepts_animals_and_random_only() {
-        assert_eq!(parse_say_box("Cat").unwrap(), Some(Animal::Cat));
-        assert_eq!(parse_say_box("RANDOM").unwrap(), None);
-        assert!(parse_say_box("~/art/parrot.png").is_err());
+    fn animal_accepts_animals_and_random_only() {
+        assert_eq!(parse_animal("Cat").unwrap(), Some(Animal::Cat));
+        assert_eq!(parse_animal("RANDOM").unwrap(), None);
+        assert!(parse_animal("~/art/parrot.png").is_err());
     }
 
     #[test]
@@ -324,7 +323,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.bots, Config::default().bots);
-        assert_eq!(cfg.say_box, Some(Animal::Parrot));
+        assert_eq!(cfg.animal, Some(Animal::Parrot));
         assert_eq!(cfg.terminal_title, None);
     }
 
@@ -336,7 +335,7 @@ mod tests {
                 ..Default::default()
             },
             CliOverrides {
-                say_box: Some("yeoman".into()),
+                animal: Some("yeoman".into()),
                 ..Default::default()
             },
             CliOverrides {

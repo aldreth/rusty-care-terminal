@@ -1,21 +1,20 @@
 # rusty-care-terminal
 
-A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal), rebuilt in **Rust** with **ratatui**. Care messages come from **Mastodon RSS** (no Twitter).
+A gentle terminal dashboard inspired by [notwaldorf/tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal), rebuilt in **Rust** with **ratatui**.
 
-It ships as a single binary and is configured with **environment variables** and/or **CLI flags** (no config file).
+It shows:
 
-## Features
+- the last posts from [tinycarebot](https://bsky.app/profile/did:plc:neqftbqcrgcypgrexcenyiqx) [@selfcare@hachyderm.io](https://hachyderm.io/@selfcare), & [@obliquestions@mastodon.matthewmcvickar.com](https://mastodon.matthewmcvickar.com/@obliquestions). The first tow posts reminders about taking breaks, drinking water and looking outside, the latter asks questions lifted out of context from public-domain books. If you don't like these bots, they're configurable!
+- your git commits, including co-authored commits, from today and the last 7 days. When I get stressed out because I think I haven't done anything, it turns out that I only think about big and serious commits, and forget about all the tiny amounts of work I've actually done throughout. Hopefully this will help you too <3
+- the weather, because you might get rained on.
 
-- Today (last 24 hours) and last-week git panels plus a bar chart, showing commits where **you** are the author, committer or a `Co-authored-by` co-author
-- Messages from three Mastodon bots (`@user@instance` → `https://{host}/@{user}.rss`), with a public REST fallback, an offline cache and rate-limit backoff
-- Any slot can be a generic RSS or Atom feed instead (a blog, news site or Mastodon hashtag); posts with titles show them, linked to the full post ([details](./CONFIGURATION.md#other-rss-and-atom-feeds))
-- A say-box with four pixel-art animals (parrot, cat, bunny, llama) that resize cleanly; `a` cycles them
-- Weather from [Open-Meteo](https://open-meteo.com/) (city name or `lat,lon`, no API key)
-- A pomodoro timer in the say-box, with a pixel-art tomato while you work and a cup of tea on breaks
-- Auto, dark and light themes that never paint over your terminal's background; auto follows light/dark switches live (instantly in Ghostty, kitty and other terminals that report them)
-- Refreshes run in the background, so the UI stays responsive on slow or flaky networks
+You can also use it as a pomodoro timer.
 
-## Install
+It looks like this, and updates every 20 minutes.
+
+## Make it work
+
+### Install
 
 Prebuilt binaries for macOS (Apple silicon and Intel), Linux (x86_64 and arm64) and Windows are attached to each [GitHub Release](https://github.com/aldreth/rusty-care-terminal/releases):
 
@@ -38,55 +37,43 @@ cargo install rusty-care-terminal --locked
 
 `git` must be on your `PATH` for the commit panels.
 
-## Run
+### Configure
+
+Settings are `RCT_*` environment variables or CLI flags (a flag overrides an environment variable). [CONFIGURATION.md](./CONFIGURATION.md) lists every option and default, how your commits are matched, bots to try (including some delightfully strange ones) and legacy `TTC_*` support.
 
 ```bash
-rusty-care-terminal --repos "$HOME/Code" --weather London
+export RCT_REPOS="$HOME/Developer/code,$HOME/projects"
+export RCT_WEATHER='York, United Kingdom'
+```
 
-rusty-care-terminal --mock   # offline care messages, no Mastodon requests
+### Run
+
+```bash
+rusty-care-terminal
+
+# or with cli flags
+rusty-care-terminal l --repos "$HOME/Code"
 ```
 
 It needs an interactive terminal; piping its output exits with an error.
 
-## Configuration
-
-Settings are `RCT_*` environment variables or CLI flags (a flag wins); there is no config file. **[CONFIGURATION.md](./CONFIGURATION.md)** lists every option and default, how your commits are matched, bots to try (including some delightfully strange ones), legacy `TTC_*` support and what the app sends over the network.
-
-```bash
-export RCT_REPOS="$HOME/Code"
-export RCT_WEATHER=London
-export RCT_BOTS='selfcare@hachyderm.io,petrock@stefanbohacek.online,GoatsLive@mastodon.social'
-rusty-care-terminal
-```
-
 ## Keys
 
-| Key | Action |
-| --- | --- |
-| `h` / `?` | Help |
-| `q` / `Esc` | Quit (closes help or a fullscreen list first) |
-| `Ctrl+C` | Quit straight away |
-| `r` | Refresh git, bot messages and weather now |
-| `t` / `w` | Fullscreen Today / Week commits (easy to select and copy) |
-| `Tab` | Choose which commit list `j`/`k` scrolls (highlighted border) |
-| `j` / `k` or `↓` / `↑` | Scroll the selected commit list |
-| `a` | Next say-box animal (parrot → cat → bunny → llama) |
-| `p` | Toggle the pomodoro timer in the say-box |
-| `s` | Start / pause the timer |
-| `e` | Reset the current phase |
-| `u` / `U` | Focus minutes +1 / −1 |
-| `b` / `B` | Break minutes +1 / −1 |
-
-## Layout
-
-```
-┌──────────── last 24h ────────────┬ commits ┬ weather ─┐
-│ git subjects                     │  bar    ├ bot #2 ──┤
-│                                  │         ├ bot #3 ──┤
-├──────────── last week ───────────┴─────────┴──────────┤
-│ week commits                     │ say-box / pomodoro │
-└───────────────────────────────────────────────────────┘
-```
+| Key                    | Action                                        |
+| ---------------------- | --------------------------------------------- |
+| `h` / `?`              | Help                                          |
+| `q` / `Esc`            | Quit (closes help or a fullscreen list first) |
+| `Ctrl+C`               | Quit straight away                            |
+| `r`                    | Refresh git, bot messages and weather now     |
+| `t` / `w`              | Fullscreen Today / Week commits               |
+| `Tab`                  | Choose which commit list is scrollable        |
+| `j` / `k` or `↓` / `↑` | Scroll the selected commit list               |
+| `a`                    | Change animal (parrot → cat → bunny → llama)  |
+| `p`                    | Toggle the pomodoro timer                     |
+| `s`                    | Start / pause the pomodoro timer              |
+| `e`                    | Reset the pomodoro timer                      |
+| `u` / `U`              | Focus minutes +1 / −1                         |
+| `b` / `B`              | Break minutes +1 / −1                         |
 
 ## Troubleshooting
 
@@ -94,18 +81,6 @@ rusty-care-terminal
 - **"weather unavailable":** try a bigger nearby city, or `lat,lon` such as `51.51,-0.13`.
 - **Bot messages don't change:** the feed may be rate limited or offline; the footer says which. Cached messages are shown until it recovers.
 - **Wrong colours:** set `RCT_THEME=dark` or `RCT_THEME=light`.
-
-## Compared to tiny-care-terminal
-
-| | tiny-care-terminal | rusty-care-terminal |
-| --- | --- | --- |
-| Language / UI | Node + blessed | Rust + ratatui |
-| Bots | Twitter | Mastodon RSS (+ REST fallback) |
-| Config | `TTC_*` env | `RCT_*` env + CLI flags (no file), `TTC_*` still read |
-| Weather | MSN / weather-js | Open-Meteo |
-| Say-box art | cowsay / ANSI files | Four built-in pixel animals |
-| Pomodoro | Yes | Yes (no desktop notifications) |
-| Git | Your commits | Sole or joint authorship (incl. `Co-authored-by`) |
 
 ## Development
 
@@ -143,7 +118,3 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 ## Releases
 
 Releases are automated with git-cliff, release-plz and dist, following Orhun's [automated Rust releases](https://blog.orhun.dev/automated-rust-releases/) recipe. See [RELEASES.md](./RELEASES.md) for the flow, one-time GitHub setup and local checks.
-
-## License
-
-MIT. Inspired by Monica Dinculescu's [tiny-care-terminal](https://github.com/notwaldorf/tiny-care-terminal) and the selfcare.tech community.

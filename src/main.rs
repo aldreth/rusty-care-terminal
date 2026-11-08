@@ -41,13 +41,13 @@ struct Cli {
     #[arg(long, env = "RCT_REPOS_DEPTH")]
     repos_depth: Option<usize>,
 
-    /// Comma-separated bots as user@instance or feed URLs (the first feeds the say-box).
+    /// Comma-separated bots as user@instance or feed URLs (the first feeds the animal box).
     #[arg(long, env = "RCT_BOTS")]
     bots: Option<String>,
 
-    /// Starting say-box animal: parrot | cat | bunny | llama | random (`a` cycles in-app).
-    #[arg(long, env = "RCT_SAY_BOX")]
-    say_box: Option<String>,
+    /// Starting animal: parrot | cat | bunny | llama | random (default: parrot).
+    #[arg(long, env = "RCT_ANIMAL")]
+    animal: Option<String>,
 
     /// Your commit emails, comma-separated (default: each repo's user.email).
     #[arg(long, env = "RCT_GIT_AUTHOR_EMAILS")]
@@ -92,7 +92,7 @@ impl From<Cli> for CliOverrides {
             repos: cli.repos,
             repos_depth: cli.repos_depth,
             bots: cli.bots,
-            say_box: cli.say_box,
+            animal: cli.animal,
             git_author_emails: cli.git_author_emails,
             update_interval: cli.update_interval,
             weather: cli.weather,
